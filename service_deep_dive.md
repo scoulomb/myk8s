@@ -133,7 +133,7 @@ vagrant@k8sMaster:~$ sudo iptables-save | grep 192.168.16.17
 -A KUBE-SEP-SIUA6YONSJ3WPF22 -p tcp -m tcp -j DNAT --to-destination 192.168.16.173:80
 ````
 
-## Svc discovery by env var or DNS by another pod
+## Svc discovery by environment variable or DNS within a POD
 
 ````
 vagrant@k8sMaster:~$ k get svc
@@ -142,6 +142,9 @@ deploy1      ClusterIP   10.100.200.199   <none>        80/TCP    47m
 ````
 
 Create a client pod `deploy-test` to target nginx service previously created (also using nginx image)
+In snippet below, within a container in that pod we do:
+- service discovery by environment var
+- Follwed by DNS.
 
 ````
 k create deployment deploy-test --image=nginx
@@ -166,7 +169,6 @@ root@deploy-test-854bc66d47-tptt9:/#
 
 Why service discovery by env var is dangerous?
 
-
 If now I delete the service and recreate the service
 
 ````
@@ -178,9 +180,9 @@ NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
 deploy1      ClusterIP   10.96.121.165   <none>        80/TCP    7s
 ````
 
-Cluster IP has changed from 10.100.200.199 to 10.96.121.165
+Cluster IP has changed from `10.100.200.199` to `10.96.121.165`
 
-Thus
+Thus service discovery by environment var stop working, while DNS one is working
  
 ````
 vagrant@k8sMaster:~$ k exec -it deploy-test-854bc66d47-tptt9 -- /bin/bash
@@ -203,8 +205,9 @@ root@deploy-test-854bc66d47-rfhmt:/# echo $DEPLOY1_SERVICE_HOST
 10.96.121.165
 ````
 
-Only new pods have the new IP (if service created after pod creation it does not kn
-ow it). So env var discovery forces to expose service before deploying client pod
+Only new pods have the new IP (if service created after pod creation it does not know it). So env var discovery forces to expose service before deploying client pod
+This ordering issue is documented here: https://kubernetes.io/docs/concepts/services-networking/service/#discovering-services
+It is even said: "You can (and almost always should) set up a DNS service for your Kubernetes cluster using an add-on."
 
 ## Within a container
 
@@ -341,6 +344,11 @@ vagrant@k8sMaster:~$ k exec -it deploy-test-854bc66d47-tptt9 -- /bin/sh
 <!DOCTYPE html>
 ````
 
+Note external name does not have cluster ip, and external ip is replacing the virtual ip
+It does not have env var
+So usable only inside a pod using DNS disovery
+
+
 ### Service wihtout a selector
 
 Controller when there is label creates endpoint
@@ -390,7 +398,7 @@ So that
 vagrant@k8sMaster:~$ k describe svc my-service | grep Endpoints
 Endpoints:         140.82.118.4:443,216.58.207.131:443
 ````
-This time I have a cluster ip (node service name DNS only usable from within a pod)
+This time I have a cluster ip 
 
 ````
 vagrant@k8sMaster:~$ k get svc | grep my
