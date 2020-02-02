@@ -1,6 +1,7 @@
 # Service deep dive
 
 ## Clean up
+
 ```
 k delete svc,deployment --all
 k create deployment deploy1 --image=nginx
@@ -8,7 +9,7 @@ k create deployment deploy1 --image=nginx
 
 ## Each pod has an IP
 
-````
+```
 vagrant@k8sMaster:~$ ip a | grep inet
     inet 127.0.0.1/8 scope host lo
     inet6 ::1/128 scope host
@@ -18,19 +19,26 @@ vagrant@k8sMaster:~$ k get pods -o wide
 NAME                       READY   STATUS    RESTARTS   AGE   IP               NODE        NOMINATED NODE   READINESS GATES
 deploy1-5d98f66655-8gffz   1/1     Running   0          72s   192.168.16.171   k8smaster   <none>
 
+```
+
+We will export `POD_NAME` and `POD_IP`.
+
+```
 export POD_NAME=$(k get pods -o wide | grep "deploy1-" |  awk '{ print $1 }')
 export POD_IP=$(k get pods -o wide | grep "deploy1-" |  awk '{ print $6 }')
 ```
 
-We can target pod ip
+We can target pod ip directly
 
 ```
 vagrant@k8sMaster:~$  curl --silent http://$POD_IP | grep "<title>"
 <title>Welcome to nginx!</title>
 ```
+
 ## Use service
 
 Rather than targetting pod directy we can use service
+Pod is linked to a service via a label in selector as it can be shown here:
 
 ```
 vagrant@k8sMaster:~$ k describe pod $POD_NAME | grep -A 1 "Labels"
@@ -45,10 +53,9 @@ vagrant@k8sMaster:~$ k expose deployment deploy1 --port=80 --type=ClusterIP --dr
 
 k expose deployment deploy1 --port=80 --type=ClusterIP 
 
-````
-Pod is linked to a service via a label in selctor
+```
 
-We can use service to traget the pod 
+We can use service to target the pod using the cluster ip.
 
 ```
 vagrant@k8sMaster:~$ k get svc
@@ -73,11 +80,12 @@ vagrant@k8sMaster:~$ k get ep | grep "deploy1"
 deploy1      192.168.16.171:80   3m33s
 ````
 
-When sacling deployment, it creates other ep and load balance the traffic
+When scaling deployment, it creates other ep and load balance the traffic
+We scale by doing `k scale --replicas=3 deployment/deploy1`
+
+And check new endpoints
 
 ```
-k scale --replicas=3 deployment/deploy1
-
 vagrant@k8sMaster:~$ k get pods -o wide | grep "deploy1-"
 deploy1-5d98f66655-8gffz   1/1     Running   0          22m   192.168.16.171   k8smaster   <none>
         <none>
@@ -88,23 +96,21 @@ deploy1-5d98f66655-skf26   1/1     Running   0          26s   192.168.16.172   k
 
 vagrant@k8sMaster:~$ k get ep | grep "deploy1"
 deploy1      192.168.16.171:80,192.168.16.172:80,192.168.16.173:80   5m5s
-
 ```
 
 ## Service internal
 
-kube-proxy watches endpoint and service updates iptable
+`kube-proxy` watches endpoints and services to updates iptable.
 
-Check it is up
+It is running inside a Pod
 
 ````
 vagrant@k8sMaster:~$ k -n kube-system logs kube-proxy-wkxs6
 W0202 11:39:49.644676       1 server_others.go:329] Flag proxy-mode="" unknown, assuming iptables proxy
-```
+````
 
 
-https://kubernetes.io/docs/tasks/debug-application-cluster/debug-service/#iptables
-We can see updated iptable !
+We can see updated iptable ! as documented in [doc](https://kubernetes.io/docs/tasks/debug-application-cluster/debug-service/#iptables)
 
 ````
 vagrant@k8sMaster:~$ sudo iptables-save | grep  10.100.200.199
@@ -127,7 +133,6 @@ vagrant@k8sMaster:~$ sudo iptables-save | grep 192.168.16.17
 -A KUBE-SEP-SIUA6YONSJ3WPF22 -p tcp -m tcp -j DNAT --to-destination 192.168.16.173:80
 ````
 
-
 ## Svc discovery by env var or DNS by another pod
 
 ````
@@ -135,13 +140,14 @@ vagrant@k8sMaster:~$ k get svc
 NAME         TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
 deploy1      ClusterIP   10.100.200.199   <none>        80/TCP    47m
 ````
-Create a client pod `deploy-test` to target niginx service
+
+Create a client pod `deploy-test` to target nginx service previously created (also using nginx image)
 
 ````
 k create deployment deploy-test --image=nginx
 k exec -it deploy-test-854bc66d47-tptt9 -- /bin/bash
-# apt-get update
-# apt-get install curl
+root@deploy-test-854bc66d47-tptt9:/# apt-get update
+root@deploy-test-854bc66d47-tptt9:/# apt-get install curl
 root@deploy-test-854bc66d47-tptt9:/# env | grep DEPLOY1_
 DEPLOY1_PORT=tcp://10.100.200.199:80
 DEPLOY1_PORT_80_TCP=tcp://10.100.200.199:80
@@ -155,8 +161,10 @@ root@deploy-test-854bc66d47-tptt9:/# curl --silent $DEPLOY1_SERVICE_HOST:$DEPLOY
 root@deploy-test-854bc66d47-tptt9:/# curl --silent deploy1 |  grep "<title>"
 <title>Welcome to nginx!</title>
 root@deploy-test-854bc66d47-tptt9:/#
+
 ````
-Why service discvery by env var is dangerous
+
+Why service discovery by env var is dangerous?
 
 
 If now I delete the service and recreate the service
@@ -207,14 +215,14 @@ vagrant@k8sMaster:~$ k exec -it deploy-test-854bc66d47-tptt9 -- /bin/bash
 root@deploy-test-854bc66d47-tptt9:/#  curl --silent 127.0.0.1 | grep "<title>"
 <title>Welcome to nginx!</title>
 ````
-## use a different port 
+## Use a different port 
 
 ```
 k delete svc deploy1
 k expose deployment deploy1 --port=5000 --target-port=80 --type=ClusterIP
 ````
 
-otherwiswe by default port = target port
+otherwiswe by default `port = target port`
 Then 
 
 ```
@@ -237,14 +245,10 @@ So different pod could use a different port (not tested)
 NodePort is a simple connection from a high-port routed to a ClusterIP 
 The NodePort is accessible via calls to <NodeIP>:<NodePort>.
 
-To ensure NodePort is in the range of port forwarded by the VM, we will add following lines
-in command section of kube-apiserver.yaml
-````
-sudo vi /etc/kubernetes/manifests/kube-apiserver.yaml
---service-node-port-range=20000-22767
-```
+To ensure NodePort is in the range of port forwarded by the VM, we will add [following line](http://www.thinkcode.se/blog/2019/02/20/kubernetes-service-node-port-range) `--service-node-port-range=32000-32000` in command section of `/etc/kubernetes/manifests/kube-apiserver.yaml`
 
-This will restart api-server (see 24s)
+This will restart api-server (see 24s in command below).
+
 
 ````
 vagrant@k8sMaster:~$  kubectl get pods -n kube-system
@@ -408,4 +412,4 @@ mix nodeport and cluser ip
 then join with deep dive
 
 
-check ex 7,2
+check ex 7.2
