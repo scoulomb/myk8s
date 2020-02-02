@@ -209,6 +209,9 @@ Only new pods have the new IP (if service created after pod creation it does not
 This ordering issue is documented here: https://kubernetes.io/docs/concepts/services-networking/service/#discovering-services
 It is even said: "You can (and almost always should) set up a DNS service for your Kubernetes cluster using an add-on."
 
+Eventually service DNS name can templatized using Helm values (or OpenShift template parameters)
+and used as environment variable 
+
 ## Within a container
 
 It is also possible to target a service inside a container
@@ -285,12 +288,18 @@ vagrant@k8sMaster:~$ curl --silent 127.0.0.1:32000 | grep "<title>"
 <title>Welcome to nginx!</title>
 vagrant@k8sMaster:~$ curl --silent 127.0.0.1:32001 | grep "<title>"
 
-# Machine host (windows and port forwarding)
-# k8sMaster.vm.network "forwarded_port", guest: 32000, host: 32000, auto_correct: true
-scoulombel@XXXXX MINGW64 ~
+````
+We can target outside from the VM.
+This is equivalent to target ip address of the node from the outside
+
+This is working because of port forwarding define in Vagrant file as follows:
+`k8sMaster.vm.network "forwarded_port", guest: 32000, host: 32000, auto_correct: true`
+
+Output is:
+````
+scoulomb@XXXXX MINGW64 ~
 $ curl --silent 127.0.0.1:32000 | grep  "<title>"
 <title>Welcome to nginx!</title>
-
 ````
 ### LoadBalancer
 
@@ -412,12 +421,367 @@ Either
 < Location: https://github.com/
 
 ````
+----
+# Ingresses
 
-## Ingresses
+## Setup
 
-Here can start from new deployment + svc
-mix nodeport and cluser ip
-then join with deep dive
+We will do 2 deployments with 3 replicas.
+We will change title tag in file `/usr/share/nginx/html/index.html`
+deployment1-replica{1..3} and deployment2-rep{1..3}
+
+### Create deployments and services
+
+```
+k delete svc,deployment --all
+k create deployment deploy1 --image=nginx
+k create deployment deploy2 --image=nginx
+k scale --replicas=3 deployment/deploy1
+k scale --replicas=3 deployment/deploy2
+k expose deployment deploy1 --port=80 --type=ClusterIP 
+k expose deployment deploy2 --port=80 --type=NodePort 
+```
+
+### Personalize the index
+
+````
+for pod in $(k get pods | grep deploy |  awk '{ print $1 }')
+do
+   echo "processing pod $pod"
+   rm -f index.html
+   echo $pod > index.html
+   cat index.html
+   kubectl cp index.html $pod:/usr/share/nginx/html/index.html
+   rm -f index.html
+done
+````
+
+And can curl as usual  with node port or not
+
+```
+vagrant@k8sMaster:~$ k get ReplicaSet
+NAME                 DESIRED   CURRENT   READY   AGE
+deploy1-5d98f66655   3         3         3       5m57s
+deploy2-5ff54b6b7b   3         3         3       5m57s
+
+vagrant@k8sMaster:~$ k get pods
+NAME                       READY   STATUS    RESTARTS   AGE
+deploy1-5d98f66655-d8np4   1/1     Running   0          4m7s
+deploy1-5d98f66655-gqgdq   1/1     Running   0          4m7s
+deploy1-5d98f66655-pgrdl   1/1     Running   0          4m8s
+deploy2-5ff54b6b7b-94kbj   1/1     Running   0          4m8s
+deploy2-5ff54b6b7b-npnsh   1/1     Running   0          4m7s
+deploy2-5ff54b6b7b-z7fgp   1/1     Running   0          4m7s
+vagrant@k8sMaster:~$ k get svc
+NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
+deploy1      ClusterIP   10.98.74.125   <none>        80/TCP         4m11s
+deploy2      NodePort    10.107.92.16   <none>        80:32000/TCP   4m9s
+kubernetes   ClusterIP   10.96.0.1      <none>        443/TCP        4m4s
+
+vagrant@k8sMaster:~$ curl 10.98.74.125
+deploy1-5d98f66655-d8np4
+vagrant@k8sMaster:~$ curl 10.98.74.125
+deploy1-5d98f66655-pgrdl
+vagrant@k8sMaster:~$ curl 10.107.92.16
+deploy2-5ff54b6b7b-npnsh
+vagrant@k8sMaster:~$ curl 10.107.92.16
+deploy2-5ff54b6b7b-94kbj
+vagrant@k8sMaster:~$ curl 127.0.0.1:32000
+deploy2-5ff54b6b7b-94kbj
+```
+
+We can see first part of pod name is rc name
+
+## Set rbac for ingress controller
+
+Eventually do `k delete -f` before.
+````
+vagrant@k8sMaster:~$ cat ingress.rbac.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: traefik-ingress-controller
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+      - endpoints
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: traefik-ingress-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-ingress-controller
+subjects:
+- kind: ServiceAccount
+  name: traefik-ingress-controller
+  namespace: kube-system
+vagrant@k8sMaster:~$
+````
+then 
 
 
-check ex 7.2
+````
+vagrant@k8sMaster:~$ k apply -f ingress.rbac.yaml
+clusterrole.rbac.authorization.k8s.io/traefik-ingress-controller created
+clusterrolebinding.rbac.authorization.k8s.io/traefik-ingress-controller created
+````
+
+##  Deploy the traefic controller
+
+We use this traeffik [version](https://github.com/containous/traefik/releases/tag/v1.7.13)
+
+Download example
+```
+curl -L  https://github.com/containous/traefik/archive/v1.7.13.tar.gz --output traefikv1.7.13.tar.gz
+vagrant@k8sMaster:~$ file traefikv1.7.13.tar.gz*
+traefikv1.7.13.tar.gz: gzip compressed data, from Unix
+vagrant@k8sMaster:~/traefik-1.7.13$ vi ./examples/k8s/traefik-ds.yaml
+```
+Modiy example to :
+- Add host network, remove capabilities
+- Change label app 
+- Add selector  https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/
+- And declare version 1.7.13 dans le daemonset
+```
+containers:
+- image: traefik:1.7.13
+```
+Otherwise error:
+````
+vagrant@k8sMaster:~/traefik-1.7.13$ k logs -f traefik-ingress-controller-z5vmm --namespace kube-system
+2020/01/31 10:15:21 command traefik error: failed to decode configuration from flags: field not found, node: kubernetes
+https://github.com/containous/traefik/issues/5422
+````
+File should be like this:
+
+````
+vagrant@k8sMaster:~$ cat traefik-1.7.13/examples/k8s/traefik-ds.yaml
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traefik-ingress-controller
+  namespace: kube-system
+---
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: traefik-ingress-controller
+  namespace: kube-system
+  labels:
+    k8s-app: traefik-ingress-lb
+spec:
+  selector:
+    matchLabels:
+      name: traefik-ingress-lb
+  template:
+    metadata:
+      labels:
+        k8s-app: traefik-ingress-lb
+        name: traefik-ingress-lb
+    spec:
+      serviceAccountName: traefik-ingress-controller
+      terminationGracePeriodSeconds: 60
+      hostNetwork: true
+      containers:
+      - image: traefik:1.7.13
+        name: traefik-ingress-lb
+        ports:
+        - name: http
+          containerPort: 80
+          hostPort: 80
+        - name: admin
+          containerPort: 8080
+          hostPort: 8080
+        args:
+        - --api
+        - --kubernetes
+        - --logLevel=INFO
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: traefik-ingress-service
+  namespace: kube-system
+spec:
+  selector:
+    k8s-app: traefik-ingress-lb
+  ports:
+    - protocol: TCP
+      port: 80
+      name: web
+    - protocol: TCP
+      port: 8080
+      name: admin
+vagrant@k8sMaster:~$
+````
+
+Deploy the ingress controller
+
+Eventually do `k delete -f` before.
+
+````
+vagrant@k8sMaster:~$ k get pods --namespace kube-system | grep traef
+vagrant@k8sMaster:~$ k apply -f traefik-1.7.13/examples/k8s/traefik-ds.yaml
+serviceaccount/traefik-ingress-controller created
+daemonset.apps/traefik-ingress-controller created
+service/traefik-ingress-service created
+vagrant@k8sMaster:~$ k get pods --namespace kube-system | grep traef
+traefik-ingress-controller-pwv2d           1/1     Running   0          6s
+````
+
+##  Create the ingress rules
+
+````
+vagrant@k8sMaster:~$ cat ingress.rule.yaml
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-test
+  namespace: default
+spec:
+  rules:
+  - host: www.example.com
+    http:
+      paths:
+      - backend:
+          serviceName: deploy1
+          servicePort: 80
+        path: /
+  - host: www.yolo.org
+    http:
+      paths:
+      - backend:
+          serviceName: deploy2
+          servicePort: 80
+        path: /
+vagrant@k8sMaster:~$
+````
+
+Deploy the rule
+Eventually do `k delete ingress ingress-test` beofre.
+
+````
+vagrant@k8sMaster:~$ k apply -f ingress.rule.yaml
+ingress.extensions/ingress-test created
+````
+
+## And target the ingress
+
+````
+vagrant@k8sMaster:~$ curl -H "Host: www.example.com" http://127.0.0.1/
+deploy1-5d98f66655-gqgdq
+vagrant@k8sMaster:~$ curl -H "Host: www.example.com" http://127.0.0.1/
+deploy1-5d98f66655-pgrdl
+vagrant@k8sMaster:~$ curl -H "Host: www.yolo.org" http://127.0.0.1/
+deploy2-5ff54b6b7b-npnsh
+vagrant@k8sMaster:~$ curl -H "Host: www.yolo.org" http://127.0.0.1/
+deploy2-5ff54b6b7b-z7fgp
+````
+
+example `Host` header routing to deploy1 and yolo to deploy 2.
+
+Note that NodePort still working
+
+````
+vagrant@k8sMaster:~$ curl 127.0.0.1:32000
+deploy2-5ff54b6b7b-94kbj
+````
+
+And that each time we use 127.0.0.1, we can use VM ip
+
+````
+vagrant@k8sMaster:~$ curl 10.0.2.15:32000
+deploy2-5ff54b6b7b-npnsh
+vagrant@k8sMaster:~$ curl -H "Host: www.yolo.org" http://10.0.2.15
+deploy2-5ff54b6b7b-94kbj
+````
+
+
+## As for NodePort we can use forwarded port outside  VM 
+
+This is equivalent to target ip address of the node from the outside
+ 
+It is working because we defined port forwarding rule: `k8sMaster.vm.network "forwarded_port", guest: 80, host: 9980, auto_correct: true`.
+
+results:
+
+````
+scoulomb@ XXXXX MINGW64 ~
+$ curl --silent -H "Host: www.example.com" http://127.0.0.1:9980
+deploy1-5d98f66655-gqgdq
+
+scoulomb@ XXXXX MINGW64 ~
+$ curl --silent -H "Host: www.yolo.org" http://127.0.0.1:9980
+deploy2-5ff54b6b7b-z7fgp
+````
+
+## If service is undefined
+
+````
+scoulomb@ XXXXX MINGW64 ~
+$ curl --silent -H "Host: www.yolo-donotexist.org" http://127.0.0.1:9980
+404 page not found
+````
+
+## See traeffic GUI
+
+Available on port 8880 if done:
+`k8sMaster.vm.network "forwarded_port", guest: 8080, host: 8880, auto_correct: true`
+
+![traefik 1](./Screenshot_2020-02-02-Traefik.png)
+![traefik 2](./Screenshot_2020-02-02-Traefik2.png)
+
+We can `backend` ips are pods ip
+
+````
+vagrant@k8sMaster:~$ k get pods -o wide
+NAME                       READY   STATUS    RESTARTS   AGE   IP               NODE        NOMINATED NODE   READINESS GATES
+deploy1-5d98f66655-d8np4   1/1     Running   0          77m   192.168.16.191   k8smaster   <none>
+        <none>
+deploy1-5d98f66655-gqgdq   1/1     Running   0          77m   192.168.16.190   k8smaster   <none>
+        <none>
+deploy1-5d98f66655-pgrdl   1/1     Running   0          77m   192.168.16.132   k8smaster   <none>
+        <none>
+deploy2-5ff54b6b7b-94kbj   1/1     Running   0          77m   192.168.16.134   k8smaster   <none>
+        <none>
+deploy2-5ff54b6b7b-npnsh   1/1     Running   0          77m   192.168.16.133   k8smaster   <none>
+        <none>
+deploy2-5ff54b6b7b-z7fgp   1/1     Running   0          77m   192.168.16.189   k8smaster   <none>
+        <none>
+````
+
+## Details
+
+From the doc traefic is watching endpoint and ingress resources
+As seen here: https://docs.traefik.io/v1.7/user-guide/kubernetes/
+> Traefik will now look for cheddar service endpoints (ports on healthy pods) in both the cheese and the default namespace. Deploying cheddar into the cheese namespace and afterwards shutting down cheddar in the default namespace is enough to migrate the traffic.
+
+It most liekly also needs RBAC on service to find service (same as endpoint) label, because the ingress resource takes the service name.
+Note endpoint exists because of service (endpoints controller) 
+
+# Page Status
+
+- service was done
+- ingress done stop
+- dicrep intern code in todo
+- then join with openshift route deep dive and todo jan 20
+- spof load balance on all nodes where traefik is running (daemonset) which then redispatch to a pod potentially in different node?
