@@ -75,6 +75,9 @@ vagrant@k8sMaster:~$ curl --silent http://$CLUSTER_IP | grep "<title>"
 Endpoint controller created corresponding endpoints:
 https://github.com/kubernetes/kubernetes/blob/master/pkg/controller/endpoint/endpoints_controller.go#L200
 
+This is possible because from [k8s doc](from: https://kubernetes.io/docs/concepts/services-networking/service/)
+> The controller for the Service selector continuously scans for Pods that match its selector, and then POSTs any updates to an Endpoint object also named “my-service”.
+
 ```
 vagrant@k8sMaster:~$ k get ep | grep "deploy1"
 deploy1      192.168.16.171:80   3m33s
@@ -82,6 +85,7 @@ deploy1      192.168.16.171:80   3m33s
 
 When scaling deployment, it creates other ep and load balance the traffic
 We scale by doing `k scale --replicas=3 deployment/deploy1`
+
 
 And check new endpoints
 
@@ -100,7 +104,14 @@ deploy1      192.168.16.171:80,192.168.16.172:80,192.168.16.173:80   5m5s
 
 ## Service internal
 
-`kube-proxy` watches endpoints and services to updates iptable.
+`kube-proxy` watches endpoints and services to updates iptable and thus redirect to correct pod.
+
+It has several [modes](https://kubernetes.io/docs/concepts/services-networking/service/#virtual-ips-and-service-proxies)
+- user space proxy
+- ip table proxy :update ip table based on service cluster ip (virtual server) and endpoints (pool members)
+- ipvs (netlinks)
+
+We use below ip table.
 
 It is running inside a Pod
 
@@ -144,7 +155,7 @@ deploy1      ClusterIP   10.100.200.199   <none>        80/TCP    47m
 Create a client pod `deploy-test` to target nginx service previously created (also using nginx image)
 In snippet below, within a container in that pod we do:
 - service discovery by environment var
-- Follwed by DNS.
+- Followed by [DNS](https://kubernetes.io/docs/concepts/services-networking/service/#dns). DNS is pointing to `cluster ip`.
 
 ````
 k create deployment deploy-test --image=nginx
@@ -706,7 +717,7 @@ vagrant@k8sMaster:~$ curl 127.0.0.1:32000
 deploy2-5ff54b6b7b-94kbj
 ````
 
-And that each time we use 127.0.0.1, we can use VM ip
+And that each time we use 127.0.0.1, we can use VM IP address
 
 ````
 vagrant@k8sMaster:~$ curl 10.0.2.15:32000
@@ -769,19 +780,81 @@ deploy2-5ff54b6b7b-z7fgp   1/1     Running   0          77m   192.168.16.189   k
         <none>
 ````
 
-## Details
+## Implementation details
 
-From the doc traefic is watching endpoint and ingress resources
+From the doc traefic is watching endpoints and ingress resources
 As seen here: https://docs.traefik.io/v1.7/user-guide/kubernetes/
 > Traefik will now look for cheddar service endpoints (ports on healthy pods) in both the cheese and the default namespace. Deploying cheddar into the cheese namespace and afterwards shutting down cheddar in the default namespace is enough to migrate the traffic.
 
-It most liekly also needs RBAC on service to find service (same as endpoint) label, because the ingress resource takes the service name.
+It most likely also needs RBAC on service to find service (same as endpoint) label, because the ingress resource takes the service name.
 Note endpoint exists because of service (endpoints controller) 
+
+It can also use the kube-proxy: as explained in [traefik doc](https://kubernetes.io/docs/concepts/configuration/overview/#services)
+> DaemonSets can be run with the NET_BIND_SERVICE capability, which will allow it to bind to port 80/443/etc on each host. This will allow bypassing the kube-proxy, and reduce traffic hops. Note that this is against the Kubernetes [Best Practices Guidelines](https://kubernetes.io/docs/concepts/configuration/overview/#services), and raises the potential for scheduling/scaling issues. Despite potential issues, this remains the choice for most ingress controllers.
+
+cf. [StackOverflow response](https://stackoverflow.com/questions/60031377/load-balancing-in-front-of-traefik-edge-router) with the update.
+
+Nginx ingress controller is also watching endpoint. From this [article](https://itnext.io/managing-ingress-controllers-on-kubernetes-part-2-36a64439e70a
+> the k8s-ingress-nginx controller uses the service endpoints instead of its virtual IP address.
+
+See complementary articles:
+- https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/
+- https://www.haproxy.com/fr/blog/dissecting-the-haproxy-kubernetes-ingress-controller/
+
+## OpenShift route (HA proxy)
+
+OpenShift Route is equivalent to Ingress
+Cf. this [OpenShift blogpost](https://blog.openshift.com/kubernetes-ingress-vs-openshift-route/)
+
+## Single point of failure
+
+To avoid SPOF, we load balance on all nodes where traefik is running (daemonset) which then redispatch to a pod potentially in different node?
+(or DNS load balancing)
+
+See this question: 
+https://stackoverflow.com/questions/60031377/load-balancing-in-front-of-traefik-edge-router
+
+> Looking at OpenShift HA proxy or Traefik project: https://docs.traefik.io/. I can see Traefik ingress controller is deployed as a DaemonSet. It enables to route traffic to correct services/endpoints using virtual host.
+> Assuming I have a Kubernetes cluster with several nodes. How can I avoid to have a single point of failure?
+> Should I have a load balancer (or DNS load balancing), in front of my nodes?
+> If yes, does it mean that:
+> 1. Load balancer will send traffic to one node of k8s cluster
+> 2. Traefik will send the request to one of the endpoint/pods. Where this pod could be located in a different k8s node?
+>
+> Does it mean there would be a level of indirection?
+> I am also wondering if the F5 cluster mode feature could avoid such indirection?
+
+Answer I got is:
+
+> You should have a load balancer (BIG IP from F5 or a software load balancer) for traefik pods. When client request comes in it will sent to one of the traefik pods by the load balancer. Once request is in the traefik pod traefik will send the request to cluster IP of the kubernetes workload pods based on ingress rules.You can configure L7 load balancing in traefik for your workload pods.Once the request is in clusterIP from there Kube proxy will perform L4 load balancing to your workload pods IPs.
+
+So answer is yes.
+
+As such we have following steps:
+
+1. DNS targeting a VIP (used later by vhost) 
+2. F5 load balancer exposing a VIP with pool members being cluster nodes (where daemon set deployed ingress controller). Note [1 + 2] can be replaced by a DNS round robin
+3. Ingress controller redirect to correct service / endpoint / pod using vhost header. 
+4. Ingress controller use HA proxy or forward directly to endpoint/pod (cf. implem details)
+(note endpoints created by endpoint controller based on pod and service label, iptable updated by ha-proxy based on endpoints and service )
+
+So we have until 3 levels of indirection, but usually only 2 because HA proxy is bypassed.
+
+Alternatively:
+3. F5 could also load balance to a a Service NodePort,
+4. then service redirect using HA proxy to pod 
+
+
+# Multicluster considerations
+
+Same application could have pod in 2 different cluster/PAAS.
+Impact can be to add a level of load balancer in front of `step 2.` in section above (so 3/4 levels))
+Or identify with labels which pod is running in which PAAS (dynamically), and F5 to load balance to multicluster nodes.
+Could avoid a level of indirection.
 
 # Page Status
 
-- service was done
-- ingress done stop
-- dicrep intern code in todo
-- then join with openshift route deep dive and todo jan 20
-- spof load balance on all nodes where traefik is running (daemonset) which then redispatch to a pod potentially in different node?
+- service ok
+- ingress ok
+- back port openshift test, add spof and multicluster consideration ok
+- discrepency intern code in todo for svc discovery
