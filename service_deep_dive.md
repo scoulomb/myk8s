@@ -313,6 +313,7 @@ $ curl --silent 127.0.0.1:32000 | grep  "<title>"
 <title>Welcome to nginx!</title>
 ````
 ### LoadBalancer
+Doc: https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/
 
 Creating a LoadBalancer service generates a NodePort.
 It sends an asynchronous call to an external load balancer, 
@@ -555,9 +556,9 @@ clusterrole.rbac.authorization.k8s.io/traefik-ingress-controller created
 clusterrolebinding.rbac.authorization.k8s.io/traefik-ingress-controller created
 ````
 
-##  Deploy the traefic controller
+##  Deploy the Traefik controller
 
-We use this traeffik [version](https://github.com/containous/traefik/releases/tag/v1.7.13)
+We use this Traeffik [version](https://github.com/containous/traefik/releases/tag/v1.7.13)
 
 Download example
 ```
@@ -753,7 +754,7 @@ $ curl --silent -H "Host: www.yolo-donotexist.org" http://127.0.0.1:9980
 404 page not found
 ````
 
-## See traeffic GUI
+## See Traefik GUI
 
 Available on port 8880 if done:
 `k8sMaster.vm.network "forwarded_port", guest: 8080, host: 8880, auto_correct: true`
@@ -782,7 +783,7 @@ deploy2-5ff54b6b7b-z7fgp   1/1     Running   0          77m   192.168.16.189   k
 
 ## Implementation details
 
-From the doc traefic is watching endpoints and ingress resources
+From the doc Traefik controller is watching endpoints and ingress resources
 As seen here: https://docs.traefik.io/v1.7/user-guide/kubernetes/
 > Traefik will now look for cheddar service endpoints (ports on healthy pods) in both the cheese and the default namespace. Deploying cheddar into the cheese namespace and afterwards shutting down cheddar in the default namespace is enough to migrate the traffic.
 
@@ -805,10 +806,19 @@ See complementary articles:
 
 OpenShift Route is equivalent to Ingress
 Cf. this [OpenShift blogpost](https://blog.openshift.com/kubernetes-ingress-vs-openshift-route/)
+From [OpenShift HA proxy doc](https://docs.okd.io/latest/architecture/networking/assembly_available_router_plugins.html#architecture-haproxy-router):
+> The template router has two components:
+> -  A wrapper that watches endpoints and routes and causes a HAProxy reload based on changes
+> - A controller that builds the HAProxy configuration file based on routes and endpoints
+
+Thus it seems OpenShift route bypass also `kube-proxy`
+
 
 ## Single point of failure
 
-To avoid SPOF, we load balance on all nodes where traefik is running (daemonset) which then redispatch to a pod potentially in different node?
+### Ingress
+
+To avoid SPOF, we load balance on all nodes where Traefik is running ([daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset)) which then redispatch to a pod potentially in different node?
 (or DNS load balancing)
 
 See this question: 
@@ -823,10 +833,17 @@ https://stackoverflow.com/questions/60031377/load-balancing-in-front-of-traefik-
 >
 > Does it mean there would be a level of indirection?
 > I am also wondering if the F5 cluster mode feature could avoid such indirection?
+> EDIT (post 2nd response): when used with [F5 Ingress resource](https://clouddocs.f5.com/containers/v2/kubernetes/kctlr-k8s-ingress-ctlr.html#set-a-default-shared-ip-address)
 
-Answer I got is:
+Answers I got is:
 
 > You should have a load balancer (BIG IP from F5 or a software load balancer) for traefik pods. When client request comes in it will sent to one of the traefik pods by the load balancer. Once request is in the traefik pod traefik will send the request to cluster IP of the kubernetes workload pods based on ingress rules.You can configure L7 load balancing in traefik for your workload pods.Once the request is in clusterIP from there Kube proxy will perform L4 load balancing to your workload pods IPs.
+
+After correction on Kube-proxy made as a comment, and explained [here](#Implementation details), 2nd response:
+
+> You can have a load balancer (BIG IP from F5 or a software load balancer) for traefik pods. When client request comes in it will sent to one of the traefik pods by the load balancer. Once request is in the traefik pod traefik will send the request to IPs of the kubernetes workload pods based on ingress rules by getting the IPs of those pods from kubernetes endpoint API.You can configure L7 load balancing in traefik for your workload pods.
+> Using a software reverse proxy such as nginx and exposing it via a load balancer introduces an extra network hop from the load balancer to the nginx ingress pod.
+> Looking at the F5 docs BIG IP controller can also be used as ingress controller and I think using it that way you can avoid the extra hop.
 
 So answer is yes.
 
@@ -835,26 +852,30 @@ As such we have following steps:
 1. DNS targeting a VIP (used later by vhost) 
 2. F5 load balancer exposing a VIP with pool members being cluster nodes (where daemon set deployed ingress controller). Note [1 + 2] can be replaced by a DNS round robin
 3. Ingress controller redirect to correct service / endpoint / pod using vhost header. 
-4. Ingress controller use HA proxy or forward directly to endpoint/pod (cf. implem details)
-(note endpoints created by endpoint controller based on pod and service label, iptable updated by ha-proxy based on endpoints and service )
+4. Ingress controller use HA proxy or forward directly to endpoint/pod (cf. [Implementation-details](#Implementation-details))
+(Note endpoints created by endpoint controller based on pod and service label, iptable updated by ha-proxy based on endpoints and service )
 
-So we have until 3 levels of indirection, but usually only 2 because HA proxy is bypassed.
+So we have until 3 levels of indirection, but usually only 2 because `kube-proxy` is [bypassed](#Implementation-details). 
 
-Alternatively:
-3. F5 could also load balance to a a Service NodePort,
+
+### Node port alternative
+
+Modify step `3.` and `4.` as follows:
+3. F5 could also load balance to a a [NodePort service type](./service_deep_dive.md#NodePort),
 4. then service redirect using HA proxy to pod 
 
+This is the same as [load balancer service type](./service_deep_dive.md#LoadBalancer) except no async request is sent to F5.
 
 # Multicluster considerations
 
+## Multicluster and LB layer
+
 Same application could have pod in 2 different cluster/PAAS.
-Impact can be to add a level of load balancer in front of `step 2.` in section above (so 3/4 levels))
+Impact can be to add a level of load balancer in front of `step 2.` in section above (so 4 levels, and 3 if `kube-proxy` bypassed)
+
+## Multicluster and reduce the number of LB layer
+
 Or identify with labels which pod is running in which PAAS (dynamically), and F5 to load balance to multicluster nodes.
 Could avoid a level of indirection.
 
-# Page Status
-
-- service ok
-- ingress ok
-- back port openshift test, add spof and multicluster consideration ok
-- discrepency intern code in todo for svc discovery
+Next: [F5 integration](./k8s_f5_integration.md)
