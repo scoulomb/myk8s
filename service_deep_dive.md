@@ -218,6 +218,10 @@ root@deploy-test-854bc66d47-rfhmt:/# echo $DEPLOY1_SERVICE_HOST
 
 Only new pods have the new IP (if service created after pod creation it does not know it). So env var discovery forces to expose service before deploying client pod
 This ordering issue is documented here: https://kubernetes.io/docs/concepts/services-networking/service/#discovering-services
+> When you have a Pod that needs to access a Service, and you are using the environment variable method to publish the port and cluster IP to the client Pods, you must create the Service before the client Pods come into existence. Otherwise, those client Pods won’t have their environment variables populated.
+
+If we modify the service a redeployment is needed. 
+
 It is even said: "You can (and almost always should) set up a DNS service for your Kubernetes cluster using an add-on."
 
 Eventually service DNS name can templatized using Helm values (or OpenShift template parameters)
@@ -266,7 +270,6 @@ To ensure NodePort is in the range of port forwarded by the VM, we will add [fol
 
 This will restart api-server (see 24s in command below).
 
-
 ````
 vagrant@k8sMaster:~$  kubectl get pods -n kube-system
 NAME                                       READY   STATUS    RESTARTS   AGE
@@ -277,6 +280,11 @@ coredns-5644d7b6d9-xp79t                   1/1     Running   3          3d5h
 etcd-k8smaster                             1/1     Running   3          3d5h
 kube-apiserver-k8smaster                   1/1     Running   0          24s
 ````
+
+Alternative is to specify the `NodePort` directly:
+https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.17/#servicespec-v1-core
+> `nodePort:Integer`: The port on each node on which this service is exposed when type=NodePort or LoadBalancer. Usually assigned by the system. If specified, it will be allocated to the service if unused or else creation of the service will fail. Default is to auto-allocate a port if the ServiceType of this Service requires one. More info: https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport
+
 
 ````
 k delete svc deploy1
@@ -852,7 +860,7 @@ As such we have following steps:
 1. DNS targeting a VIP (used later by vhost) 
 2. F5 load balancer exposing a VIP with pool members being cluster nodes (where daemon set deployed ingress controller). Note [1 + 2] can be replaced by a DNS round robin
 3. Ingress controller redirect to correct service / endpoint / pod using vhost header. 
-4. Ingress controller use HA proxy or forward directly to endpoint/pod (cf. [Implementation-details](#Implementation-details))
+4. Ingress controller use HA proxy or forward directly to endpoint/pod (cf. [Implementation-details](#Implementation-details)). This Pod can be located in a different node than targeted Ingress controller Pod.
 (Note endpoints created by endpoint controller based on pod and service label, iptable updated by ha-proxy based on endpoints and service )
 
 So we have until 3 levels of indirection, but usually only 2 because `kube-proxy` is [bypassed](#Implementation-details). 
