@@ -31,7 +31,7 @@ The NodePort mode uses 2-tier load balancing:
 1. The BIG-IP Platform load balances requests to Nodes (kube-proxy).
 2. Nodes (kube-proxy) load balance requests to Pods.
 
-![traefik 2](./k8s_nodeport.png)
+![traefik 2](images/k8s_nodeport.png)
 Image from [F5 cloud doc website](https://clouddocs.f5.com/containers/v2/kubernetes/kctlr-modes.html)
 
 #### F5 cluster mode
@@ -40,7 +40,7 @@ In that case F5 is sending request to POD directly.
 It is mentioned we  `can use any type of Kubernetes Services.`
 It looks like ingress when not using `kube proxy`: [service_deep_dive](./service_deep_dive.md#Ingress).
 
-![traefik 2](./k8s_cluster.png)
+![traefik 2](images/k8s_cluster.png)
 Image from [F5 cloud doc website](https://clouddocs.f5.com/containers/v2/kubernetes/kctlr-modes.html)
 
 ### Options

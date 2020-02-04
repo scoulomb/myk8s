@@ -767,8 +767,8 @@ $ curl --silent -H "Host: www.yolo-donotexist.org" http://127.0.0.1:9980
 Available on port 8880 if done:
 `k8sMaster.vm.network "forwarded_port", guest: 8080, host: 8880, auto_correct: true`
 
-![traefik 1](./Screenshot_2020-02-02-Traefik.png)
-![traefik 2](./Screenshot_2020-02-02-Traefik2.png)
+![traefik 1](images/Screenshot_2020-02-02-Traefik.png)
+![traefik 2](images/Screenshot_2020-02-02-Traefik2.png)
 
 We can `backend` ips are pods ip
 
