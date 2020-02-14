@@ -11,3 +11,5 @@ done
 ```
 k exec -it try1-9b4568b5c-kswfc  -c simpleapp -- /bin/bash
 ```
+
+ k create cronjob test --schedule "* * * * *" --image busybox --dry-run -o yaml

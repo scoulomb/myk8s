@@ -378,7 +378,7 @@ It does not have env var
 So usable only inside a pod using DNS disovery
 
 
-### Service wihtout a selector
+### Service without a selector
 
 Controller when there is label creates endpoint
 But can define it manually in particular to target outside ressource
