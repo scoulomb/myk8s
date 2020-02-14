@@ -432,3 +432,4 @@ From there we can understand that we mount `/tmp/weblog/` at `/var/log/nginx` an
 ## Docs
 - https://github.com/fluent/fluentd
 - https://stackoverflow.com/questions/20559255/error-while-installing-json-gem-mkmf-rb-cant-find-header-files-for-ruby
+- https://github.com/kubernetes/community/blob/master/contributors/design-proposals/storage/persistent-storage.md
