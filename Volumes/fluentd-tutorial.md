@@ -28,7 +28,7 @@ This will show:
 
 ## Step 1: two container and no persistent volume
 
-```
+```yaml
 k create deployment basic --image=nginx --dry-run -o yaml > basic.yaml
 
 # Edit
@@ -68,14 +68,14 @@ k create -f basic.yaml
 ```
 Open second window and do
 
-```
+```` shell script
 export POD_IP=$(k get pods -o wide | grep "basic-" |  awk '{ print $6 }')
 watch curl $POD_IP
-```
+````
 
 Then in previous window do
 
-```
+````shell script
 export POD_NAME=$(k get pods -o wide | grep "basic-" |  awk '{ print $1 }')
 export POD_IP=$(k get pods -o wide | grep "basic-" |  awk '{ print $6 }')
 echo $POD_NAME
@@ -89,14 +89,14 @@ exit
 
 tails returns nothing however
 
-````
+````shell script
 basic-586b499858-jmxlg:/# ls -l /var/log/nginx/access.log
 lrwxrwxrwx 1 root root 11 Feb  2 08:06 /var/log/nginx/access.log -> /dev/stdout
 ````
 
 We see it is redirected to stdout so that doing:
 
-````
+````shell script
 vagrant@k8sMaster:~$ k logs basic-586b499858-jmxlg -c nginx
 10.0.2.15 - - [14/Feb/2020:21:10:05 +0000] "GET / HTTP/1.1" 200 612 "-" "curl/7.58.0" "-"
 10.0.2.15 - - [14/Feb/2020:21:10:07 +0000] "GET / HTTP/1.1" 200 612 "-" "curl/7.58.0" "-"
@@ -109,7 +109,7 @@ returns logs!
 ## Step 2: Adding a persistent volume
 
 For this we will  create a `pv` and `pvc`.
-````
+````yaml
 echo '
 kind: PersistentVolume
 apiVersion: v1
@@ -154,7 +154,7 @@ If you need to to delete the volume, and this does not work do:
 `k edit volume <volume-name>`
 
 and remove follwing lines:
-````
+````yaml
 finalizers:
   -  kubernetes.io/pv-protection
 ````
@@ -165,7 +165,7 @@ Source:
 
 Then modify `basic.yaml` to declare volume in the pod and mount it in the two containers
 
-```
+````yaml
 k delete -f basic.yaml
 echo '
 apiVersion: apps/v1
@@ -208,7 +208,7 @@ spec:
 
 diff basic.yaml basic2.yaml
 k create -f basic2.yaml
-```
+````
 
 Note use a deployment here but we could declare a pod directly instead.
 
@@ -216,14 +216,14 @@ Note use a deployment here but we could declare a pod directly instead.
 
 Open second window and do
 
-```
+```` shell script
 export POD_IP=$(k get pods -o wide | grep "basic-" |  awk '{ print $6 }')
 watch curl $POD_IP
-```
+````
 
 Then in previous window do
 
-```
+```` shell script
 export POD_NAME=$(k get pods -o wide | grep "basic-" |  awk '{ print $1 }')
 export POD_IP=$(k get pods -o wide | grep "basic-" |  awk '{ print $6 }')
 echo $POD_NAME
@@ -238,7 +238,7 @@ exit
 
 So that tail output is
 
-````
+````shell script
 vagrant@k8sMaster:~$ k exec -c nginx -it $POD_NAME -- /bin/bash
 root@basic-567b94d5f-6nml8:/# tail -f  /var/log/nginx/access.log
 10.0.2.15 - - [12/Feb/2020:18:22:14 +0000] "GET / HTTP/1.1" 200 612 "-" "curl/7.58.0" "-"
@@ -254,12 +254,12 @@ root@basic-6d8dbc8798-v2n4q:/# ls -all /var/log/nginx/access.log
 ````
 
 This is why if we do `k logs -f  $POD_NAME nginx`, logs are not returned
-```
+````shell script
 vagrant@k8sMaster:~$ k logs -f  $POD_NAME nginx
 ^C
 vagrant@k8sMaster:~$ k logs -f  $POD_NAME fdlogger
 2020-02-13 09:27:14 +0000 [info]: parsing config file is succeeded path="/fluentd/etc/fluent.conf"
-```
+````
 
 Nothing we will now configure fluentd correctly to read correct configuration.
 `/fluentd/etc/fluent.conf` is the default configuration.
@@ -271,7 +271,7 @@ From: https://docs.fluentd.org/configuration/config-file#docker
 
 We will write fluent configuration, in a ConfigMap.
 
-```
+```` yaml
 echo '
 apiVersion: v1
 kind: ConfigMap
@@ -288,13 +288,12 @@ data:
 
     <match *.**>
       @type stdout
-    </match>
-' > weblog-configmap.yaml
+    </match>' > weblog-configmap.yaml
 
 k delete -f weblog-configmap.yaml
 k create -f weblog-configmap.yaml
 
-```
+````
 
 This line `path /var/log/access.log` request fluentd to look for logs at this location.
 This location is the `$mountpoint/access.log` of shared volume, where nginx logs.
@@ -302,7 +301,7 @@ This location is the `$mountpoint/access.log` of shared volume, where nginx logs
 We modify deployment as follows, to mount consume the ConfigMap as a volume.
 And specify in container `commands` and `args` to look for the configuration where the ConfigMap is mounted.
 
-````
+```` yaml
 k delete -f basic2.yaml
 echo '
 apiVersion: apps/v1
@@ -355,7 +354,7 @@ k create -f basic3.yaml
 
 Then in a separate window do:
 
-````
+````shell script
 export POD_IP=$(k get pods -o wide | grep "basic-" |  awk '{ print $6 }')
 echo $POD_IP
 watch -n1 curl $POD_IP
@@ -363,7 +362,7 @@ watch -n1 curl $POD_IP
 
 
 Then we can tail the logs
-````
+````shell script
 export POD_NAME=$(k get pods -o wide | grep "basic-" |  awk '{ print $1 }')
 k logs -f $POD_NAME fdlogger
 ````
@@ -389,31 +388,37 @@ vagrant@k8sMaster:~$
 
 ## Explanations and wrap-up
 
-ConfigMap/Secret <- pod template spec.volumes <- pod template spec.containers.volumeMounts
-pv <- pvc        <- pod template spec.volumes <- pod template spec.containers.volumeMounts
+### General
+
+- `ConfigMap`/`Secret` <- `pod template` `spec.volumes` <- `pod template` `spec.containers.volumeMounts`
+- `pv` <- `pvc`        <- `pod template`  spec.volumes` <- `pod template` `spec.containers.volumeMounts`
 
 A configMap/Secret can also be consumed as environment variable
 Sometime we consume ConfigMap/Secret as a volume and have an environemt varisble which is pointing to that volume*
 
-In the example:
-We have a single hostPath pv, declared in pod template and mounted in nginx and fluentd containers
-So that logs are populated by nginx in
-        - mountPath: "/var/log/nginx" (pv)
-and since same volume is mounted in fluentd
-        - mountPath: "var/log" (pv)
+### In the example
+We have a single hostPath `pv`, declared in pod template and mounted in nginx and fluentd containers
+
+So that logs are populated by nginx in`mountPath: "/var/log/nginx"` (pv)
+and since same volume is mounted in fluentd in `mountPath: "var/log"` (pv)
+
 Logs are visible by fluentd in `/var/log/access.log` (and not `/var/log/nginx/access.log`, and it makes sense because of mountpoint)
 
 Then we have a ConfigMap containing fluentd conf, consumed as a volume and mounted in fluentd container
-     (NO ENV VAR: fluentd container has an env var pointing to `mountpoint of that volume/cm key name` containing fluentd conf (FLUENTD_ARGS, value: -c /etc/fluentd-config/fluentd.conf)
-     -- REPLACED BY:) fluentd container when start has an argument pointing to `mountpoint of that volume/cm key name` containing fluentd conf (/etc/fluentd-config/fluentd.conf)
+(NO ENV VAR: fluentd container has an env var pointing to `mountpoint of that volume/cm key name` containing fluentd conf (FLUENTD_ARGS, value: -c /etc/fluentd-config/fluentd.conf)
+-- REPLACED BY:) fluentd container when start has an argument pointing to `mountpoint of that volume/cm key name` containing fluentd conf (/etc/fluentd-config/fluentd.conf)
+
 The fluentd conf points to log file in `/var/log/access.log` (and not `/var/log/nginx/access.log`)
+
 So that fluentd container will look for it configuration in a file located at location given at container start (/etc/fluentd-config/fluentd.conf)
 This config file will point to  `/var/log/access.log`  (and not `/var/log/nginx/access.log`) which contains nginx logs!
-and will display in stdout of fluentd container so that we can do `k logs -f $POD_NAME fdlogger` (as forwarding is correctly set!) and see nginx logs from fluentd container with potential processing
+and will display in stdout of fluentd container.
+
+So that we can do `k logs -f $POD_NAME fdlogger` (as forwarding is correctly set!) and see nginx logs from fluentd container with potential processing
 
 We can also see the log in hostpath directly:
 
-````
+````shell script
  hostPath:
   path: "/tmp/weblog"
 
@@ -425,5 +430,5 @@ vagrant@k8sMaster:~$ cat /tmp/weblog/access.log
 From there we can understand that we mount `/tmp/weblog/` at `/var/log/nginx` and `var/log`m, thus the different location in the 2 containers!
 
 ## Docs
-https://github.com/fluent/fluentd
-https://stackoverflow.com/questions/20559255/error-while-installing-json-gem-mkmf-rb-cant-find-header-files-for-ruby
+- https://github.com/fluent/fluentd
+- https://stackoverflow.com/questions/20559255/error-while-installing-json-gem-mkmf-rb-cant-find-header-files-for-ruby
