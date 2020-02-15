@@ -391,7 +391,7 @@ vagrant@k8sMaster:~$
 ### General
 
 - `ConfigMap`/`Secret`                <- `pod template` `spec.volumes` <- `pod template` `spec.containers.volumeMounts`
--  hostPath volume <- `pv` <- `pvc`   <- `pod template`  spec.volumes` <- `pod template` `spec.containers.volumeMounts`
+- `hostPath volume` <- `pv` <- `pvc`  <- `pod template`  spec.volumes` <- `pod template` `spec.containers.volumeMounts`
 
 A configMap/Secret can also be consumed as environment variable
 Sometime we consume ConfigMap/Secret as a volume and have an environemt varisble which is pointing to that volume*

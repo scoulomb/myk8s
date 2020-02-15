@@ -4,11 +4,8 @@
 
 Starting from step 3 in [fluentd-tutorial](./fluentd-tutorial.md).
 
-We will now scale the number of replicas to 3
+We will now scale the number of replicas to 3 using `k scale --replicas=3 deployment/basic`.
 
-
-k scale --replicas=3 deployment/basic
-`
 ````shell script
 vagrant@k8sMaster:~$ k get pods -o wide
 NAME                     READY   STATUS    RESTARTS   AGE     IP               NODE        NOMINATED NODE   READINESS GATES
@@ -130,9 +127,9 @@ Cf. [local persistent volume](https://kubernetes.io/blog/2019/04/04/kubernetes-1
 
 So here we had
 - `ConfigMap`/`Secret`                <- `pod template` `spec.volumes` <- `pod template` `spec.containers.volumeMounts`
--  hostPath volume <- `pv` <- `pvc`   <- `pod template`  spec.volumes` <- `pod template` `spec.containers.volumeMounts`
+- `hostPath volume` <- `pv` <- `pvc`  <- `pod template`  spec.volumes` <- `pod template` `spec.containers.volumeMounts`
 We now have
--  hostPath volume <-             `   <- `pod template`  spec.volumes` <- `pod template` `spec.containers.volumeMounts`
+- `hostPath volume`              `    <- `pod template`  spec.volumes` <- `pod template` `spec.containers.volumeMounts`
 
 This is consistent with k8s book (`figure 6.8`).
 where hostPath can be replaced by  a gcePersistentDisk (or nfs).
