@@ -390,8 +390,8 @@ vagrant@k8sMaster:~$
 
 ### General
 
-- `ConfigMap`/`Secret` <- `pod template` `spec.volumes` <- `pod template` `spec.containers.volumeMounts`
-- `pv` <- `pvc`        <- `pod template`  spec.volumes` <- `pod template` `spec.containers.volumeMounts`
+- `ConfigMap`/`Secret`                <- `pod template` `spec.volumes` <- `pod template` `spec.containers.volumeMounts`
+-  hostPath volume <- `pv` <- `pvc`   <- `pod template`  spec.volumes` <- `pod template` `spec.containers.volumeMounts`
 
 A configMap/Secret can also be consumed as environment variable
 Sometime we consume ConfigMap/Secret as a volume and have an environemt varisble which is pointing to that volume*
@@ -428,6 +428,8 @@ vagrant@k8sMaster:~$ cat /tmp/weblog/access.log
 10.0.2.15 - - [14/Feb/2020:21:37:27 +0000] "GET / HTTP/1.1" 200 612 "-" "curl/7.58.0" "-"
 ````
 From there we can understand that we mount `/tmp/weblog/` at `/var/log/nginx` and `var/log`m, thus the different location in the 2 containers!
+
+[Next steps](./go-further.md)
 
 ## Docs
 - https://github.com/fluent/fluentd
