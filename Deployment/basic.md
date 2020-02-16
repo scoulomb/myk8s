@@ -1,7 +1,7 @@
 ## Prereq
 
 - Start up k8s VM with [Vagrant](../tooling/SimpleSetup)
-- [restary script](../tooling/SimpleSetup/restart.sh) to restart kube
+- [restart script](../tooling/SimpleSetup/restart.sh) to restart kube
 - [registry deployment](../tooling/deploy-local-registry.sh)
 - [test local registry](../tooling/test-local-registry.sh)
 
