@@ -824,8 +824,6 @@ Thus it seems OpenShift route bypass also `kube-proxy`
 
 ## Single point of failure
 
-### Ingress
-
 To avoid SPOF, we load balance on all nodes where Traefik is running ([daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset)) which then redispatch to a pod potentially in different node?
 (or DNS load balancing)
 
@@ -858,32 +856,18 @@ So answer is yes.
 As such we have following steps:
 
 1. DNS targeting a VIP (used later by vhost) 
-2. F5 load balancer exposing a VIP with pool members being cluster nodes (where daemon set deployed ingress controller). Note [1 + 2] can be replaced by a DNS round robin
-3. Ingress controller redirect to correct service / endpoint / pod using vhost header. 
-4. Ingress controller use HA proxy or forward directly to endpoint/pod (cf. [Implementation-details](#Implementation-details)). This Pod can be located in a different node than targeted Ingress controller Pod.
-(Note endpoints created by endpoint controller based on pod and service label, iptable updated by ha-proxy based on endpoints and service )
+2. F5 load balancer exposing a VIP with pool members being (Nodes -> cluster nodes, Port -> NodePort). Note [1 + 2] can be replaced by a DNS round robin
+3. The load balancer will actually target a [NodePort service type](./service_deep_dive.md#NodePort) pointing to Ingress controller pod (L3 routing).
+Alternative (2+3). OR we can also bind ingress controller on each node directly to port 88/443 (privileged port) to [bypass `kube-proxy`](#Implementation-details)
+4. Ingress controller redirect to correct service / endpoint / pod using vhost header (L7 routing). 
+5. Ingress controller forwards to correct service which directs to pod (this is usually done via [ip table direcly](#service-internal) ).
 
-So we have until 3 levels of indirection, but usually only 2 because `kube-proxy` is [bypassed](#Implementation-details). 
+(Note endpoints created by endpoint controller based on pod and service label, iptable updated by kube-proxy based on endpoints and service )
 
+So we have until until 3 levels of indirection, but usually only 2 because `kube-proxy` is bypassed. 
 
-### Node port alternative
+A [load balancer service type](./service_deep_dive.md#LoadBalancer) could be used instead
 
-Modify step `3.` and `4.` as follows:
-3. F5 could also load balance to a a [NodePort service type](./service_deep_dive.md#NodePort),
-4. then service redirect using HA proxy to pod 
-
-This is the same as [load balancer service type](./service_deep_dive.md#LoadBalancer) except no async request is sent to F5.
-
-# Multicluster considerations
-
-## Multicluster and LB layer
-
-Same application could have pod in 2 different cluster/PAAS.
-Impact can be to add a level of load balancer in front of `step 2.` in section above (so 4 levels, and 3 if `kube-proxy` bypassed)
-
-## Multicluster and reduce the number of LB layer
-
-Or identify with labels which pod is running in which PAAS (dynamically), and F5 to load balance to multicluster nodes.
-Could avoid a level of indirection.
+I assume OpenShift route is the Alternative (2+3)
 
 Next: [F5 integration](./k8s_f5_integration.md)

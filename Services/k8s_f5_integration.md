@@ -38,7 +38,6 @@ Image from [F5 cloud doc website](https://clouddocs.f5.com/containers/v2/kuberne
 
 In that case F5 is sending request to POD directly. 
 It is mentioned we  `can use any type of Kubernetes Services.`
-It looks like ingress when not using `kube proxy`: [service_deep_dive](./service_deep_dive.md#Ingress).
 
 ![traefik 2](images/k8s_cluster.png)
 Image from [F5 cloud doc website](https://clouddocs.f5.com/containers/v2/kubernetes/kctlr-modes.html)
@@ -133,12 +132,9 @@ So we removed another level of indirection here [service_deep_dive](./service_de
 We are doing host and name based routing: https://clouddocs.f5.com/containers/v2/kubernetes/kctlr-k8s-ingress-ctlr.html#set-a-default-shared-ip-address
 More details on [host/named based routing](https://devcentral.f5.com/s/articles/the-three-http-routing-patterns-you-should-know-30764 )
 
-So here accumulated with F5 cluster mode no indirection at all is done! Equivalent to [Ingress without `kube-porxy`](./service_deep_dive.md#Ingress).
-Otherwise using NodePort mode, it between [Ingress with  `kube-proxy`](./service_deep_dive.md#Ingress) and [NodePort alternative](./service_deep_dive.md#Node-port-alternative).
- 
-Aligned with second part of the answer in [SO](https://stackoverflow.com/questions/60031377/load-balancing-in-front-of-traefik-edge-router).
+So here accumulated with F5 cluster mode no indirection at all is done! 
 
-Does not seems compatible with multicluster.
+Aligned with second part of the answer in [SO](https://stackoverflow.com/questions/60031377/load-balancing-in-front-of-traefik-edge-router).
 
 As for Traefik `k8s big-ip controller` is able to perform only [`name based virtual hosting`](https://clouddocs.f5.com/containers/v2/kubernetes/kctlr-ingress.html#name-based-virtual-hosting).
 
