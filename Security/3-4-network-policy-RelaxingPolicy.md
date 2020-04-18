@@ -252,6 +252,8 @@ We reach same output as [section 3.2 when there was no policy](3-2-network-polic
 
 ## Ping - not TCP
 
+We add port and protocol to block the ping.
+
 ````buildoutcfg
 echo '
 apiVersion: networking.k8s.io/v1
@@ -393,6 +395,7 @@ However for ping with "pod ip directly"" it is not working anymore unlike previo
 ## Can I use label in instead of CIDR
 
 Yes, in spec.ingress.from I replace cidr by podSelector.
+Since going from newapp to app, the `spec.ingress.from` will contain newapp label.
 
 ````buildoutcfg
 vagrant@k8sMaster:~
@@ -428,7 +431,7 @@ spec:
 k create -f deny-all.yaml
 ````
 
-If I run `/interpod-com-test.sh`, it will succeed.
+If I run `/interpod-com-test.sh`, it will work as CIDR.
 What happen if I edit the label of new app.
 
 ````buildoutcfg
@@ -443,10 +446,11 @@ Reverting the change, it works.
 
 ## Concurrent net policy
 
-Here we had one network policy applying to all the pod.
+Here we had one network policy applying to all the pods.
 
 A good practise is to have one rule deny all, with `{}` spec.podSelector.
-And white list correct pods, so to have a second network policy (spec.podSelector set to app, as `newapp->app`).
+And white list correct pods, so to have a second network policy 
+(root.spec.podSelector set to app, as `newapp->app`).
 To whitelist the traffic.
 Cf. https://kubernetes.io/docs/concepts/services-networking/network-policies/#networkpolicy-resource.
 
@@ -479,6 +483,7 @@ spec:
       svc-name: app
   policyTypes:
   - Ingress 
+  - Egress
   ingress:
   - from:
     - podSelector:
@@ -493,10 +498,137 @@ spec:
 k create -f whitelist.yaml
 ````
 
-In my test when doing this everything was denied which was unexpected. (stop here)
+In my test when doing this everything was denied which seems unexpected. (from lfd/luska)
+
+So if doing :
+
+````buildoutcfg
+k delete -f deny-all.yaml
+````
+`interpod-com-test.sh` is working again.
+
+Actually the deny should not include policyTypes
+
+https://kubernetes.io/docs/concepts/services-networking/network-policies/#isolated-and-non-isolated-pods
+> Network policies do not conflict, they are additive. If any policy or policies select a pod, the pod is restricted to what is allowed by the union of those policies’ ingress/egress rules. Thus, order of evaluation does not affect the policy result.
+
+and from there: https://livebook.manning.com/book/kubernetes-in-action/chapter-13/268
+
+So declaring the default blocks the traffic but no policy type should be explicitly mentioned.
+
+````buildoutcfg
+k delete networkpolicies --all
+
+echo '
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all
+spec: 
+  podSelector: {}
+'> deny-all.yaml
+
+k create -f deny-all.yaml
+````
+Here `interpod-com-test.sh` will not work.
+
+Adding
+
+````buildoutcfg
+echo '
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: whitelist
+spec: 
+  podSelector:
+    matchLabels:
+      svc-name: app
+  policyTypes:
+  - Ingress 
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          svc-name: newapp
+    ports:
+    - port: 80
+      protocol: TCP
+  
+'> whitelist.yaml
+
+k create -f whitelist.yaml
+````
+
+Then `interpod-com-test.sh` is working!
+
+It seems to be only traffic to the pod:
+
+````buildoutcfg
+vagrant@k8sMaster:~
+$ k exec -it -c busy newapp -- nc -vz www.mozilla.org 80
+www.mozilla.org (104.16.143.228:80) open
+````
+
+## Additional observation with labels
+
+````buildoutcfg
+k delete networkpolicies --all
+k create -f whitelist.yaml
+````
+
+### app - egress 
+
+Rule is applied to the pod with label app, which was the destination (newapp->app)
+Thus this is blocked:
+````buildoutcfg
+k exec -it -c busy app -- nc -vz www.mozilla.org 80
+````
+
+If I change the label value of `app`.
+````buildoutcfg
+kubectl patch pod app -p '{"metadata" : {"labels" : {"svc-name":"app1235"}}}'
+```` 
+
+````buildoutcfg
+vagrant@k8sMaster:~
+$ k get pod app -o yaml | grep -A 1 labels
+  labels:
+    svc-name: app1235
+````
+
+We will see that my restriction rule will not apply
+
+````buildoutcfg
+vagrant@k8sMaster:~
+$ k exec -it -c busy app -- nc -vz www.mozilla.org 80
+www.mozilla.org (104.16.143.228:80) open
+````
+
+I revert label value to app, nc is blocked again.
+````buildoutcfg
+kubectl patch pod app -p '{"metadata" : {"labels" : {"svc-name":"app1235"}}}'
+````
+For patch see doc [here](https://kubernetes.io/docs/reference/kubectl/cheatsheet/#patching-resources).
+
+### New app ingress permission to app
+
+`interpod-com-test.sh` is working. Now if I change label value of newapp
+
+````buildoutcfg
+kubectl patch pod newapp -p '{"metadata" : {"labels" : {"svc-name":"app1234434"}}}'
+````
+And if doing:
+`interpod-com-test.sh`, connexion will be blocked because destination pod  app is protected by policy and newapp does not have the right label value (newapp) to target app.
+Reverting the label it is working.
+````buildoutcfg
+kubectl patch pod newapp -p '{"metadata" : {"labels" : {"svc-name":"newapp"}}}'
+````
+This OK
 
 SEC status:
 - Finished OK 18apr20
-- whitelist osef
-- capabilites eventually come back on this based on work and luska input OK
+- whitelist seems not working, deny overrides all OK FOUND. All this file OK. no come back.
+- capabilites eventually come back on this based on work and luska input OPTIONAL
 - lien lfd ok
