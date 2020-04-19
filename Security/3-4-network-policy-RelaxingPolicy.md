@@ -446,6 +446,8 @@ Reverting the change, it works.
 
 ## Concurrent net policy
 
+### First try
+
 Here we had one network policy applying to all the pods.
 
 A good practise is to have one rule deny all, with `{}` spec.podSelector.
@@ -507,14 +509,17 @@ k delete -f deny-all.yaml
 ````
 `interpod-com-test.sh` is working again.
 
-Actually the deny should not include policyTypes
+### Fixing it
+
+Understand how it is working.
 
 https://kubernetes.io/docs/concepts/services-networking/network-policies/#isolated-and-non-isolated-pods
 > Network policies do not conflict, they are additive. If any policy or policies select a pod, the pod is restricted to what is allowed by the union of those policies’ ingress/egress rules. Thus, order of evaluation does not affect the policy result.
 
 and from there: https://livebook.manning.com/book/kubernetes-in-action/chapter-13/268
 
-So declaring the default blocks the traffic but no policy type should be explicitly mentioned.
+As in the book we will remove policyTypes
+
 
 ````buildoutcfg
 k delete networkpolicies --all
@@ -563,13 +568,123 @@ k create -f whitelist.yaml
 
 Then `interpod-com-test.sh` is working!
 
-It seems to be only traffic to the pod:
+
+### Why it is working
+
+This is because from the [doc](https://kubernetes.io/docs/concepts/services-networking/network-policies/#networkpolicy-resource).
+> If no policyTypes are specified on a NetworkPolicy then by default Ingress will always be set and Egress will be set if the NetworkPolicy has any egress rules.
+
+This was actually visible:
+
+````buildoutcfg
+vagrant@k8sMaster:~
+$ cat deny-all.yaml
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all
+spec:
+  podSelector: {}
+
+vagrant@k8sMaster:~
+$ k create -f deny-all.yaml
+networkpolicy.networking.k8s.io/deny-all created
+vagrant@k8sMaster:~
+$ k get networkpolicy.networking.k8s.io/deny-all -o yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+[...]
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+
+
+````
+
+and explains why this is still working:
 
 ````buildoutcfg
 vagrant@k8sMaster:~
 $ k exec -it -c busy newapp -- nc -vz www.mozilla.org 80
 www.mozilla.org (104.16.143.228:80) open
 ````
+It was not working in first try because there was an egress rule, and it is additive.
+To make it work we could have added an egress whitelist at specific level or global.
+
+#### Using an egress whitelist to show rule additivity
+
+````buildoutcfg
+k delete networkpolicies --all
+
+echo '
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all
+spec: 
+  podSelector: {}
+  policyTypes:
+  - Ingress 
+  - Egress 
+#  egress: # at global level, but not much sense, in that case whitelist-all-egress-from-newapp.yaml is not necessary
+#  - {}
+'> deny-all.yaml
+
+k create -f deny-all.yaml
+
+echo '
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: whitelist-ingress-to-app-from-newapp
+spec: 
+  podSelector:
+    matchLabels:
+      svc-name: app
+  policyTypes:
+  - Ingress 
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          svc-name: newapp
+    ports:
+    - port: 80
+      protocol: TCP
+'>  whitelist-ingress-to-app-from-newapp.yaml
+
+k create -f whitelist-ingress-to-app-from-newapp.yaml
+
+echo '
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: whitelist-all-egress-from-newapp
+spec: 
+  podSelector:
+    matchLabels:
+      svc-name: newapp
+  policyTypes:
+  - Ingress 
+  - Egress
+  egress: 
+  - {} # allow all egress for this selector
+'> whitelist-all-egress-from-newapp.yaml
+
+k create -f whitelist-all-egress-from-newapp.yaml
+````
+
+Interpod is working.
+More details on default policy in [doc](https://kubernetes.io/docs/concepts/services-networking/network-policies/#default-allow-all-egress-traffic).
+
+Here the specific egress whitelist is added to global egress (which had no whitelist).
+
+Note that if no policyTypes are specified on a NetworkPolicy then by default Ingress will always be set and Egress will be set if the NetworkPolicy has any egress rules.
+works also when applied to a specific selector.
 
 ## Additional observation with labels
 
@@ -627,8 +742,17 @@ kubectl patch pod newapp -p '{"metadata" : {"labels" : {"svc-name":"newapp"}}}'
 ````
 This OK
 
+
+
 SEC status:
 - Finished OK 18apr20
-- whitelist seems not working, deny overrides all OK FOUND. All this file OK. no come back.
+- whitelist seems not working, 
+18apr: deny overrides fix .
+19apr: apply it to a single pod and understood and explained reason
+FULL OK YES OK
 - capabilites eventually come back on this based on work and luska input OPTIONAL
+lb? better use volume than chmod?
+use dockerhub rather artifactory
+use zalando for pip issue repro
 - lien lfd ok
+ok
