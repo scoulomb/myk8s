@@ -749,10 +749,11 @@ SEC status:
 - whitelist seems not working, 
 18apr: deny overrides fix .
 19apr: apply it to a single pod and understood and explained reason
-FULL OK YES OK
+FULL OK YES OK (voit mail 19apr)
 - capabilites eventually come back on this based on work and luska input OPTIONAL
 lb? better use volume than chmod?
 use dockerhub rather artifactory
 use zalando for pip issue repro
+lien avec [3.1](3-1-network-policy-NoPolicy.md#Add-a-nginx-container-to-test-ingress)
 - lien lfd ok
 ok

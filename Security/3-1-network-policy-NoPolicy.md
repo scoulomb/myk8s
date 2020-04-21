@@ -2,7 +2,7 @@
 
 ## Test with no network policy.
 
-We will reuse pod from  [capabilites tutorial - Adding security context at container level](./0-capabilities.md#Adding-security-context-at-container-level).
+We will reuse pod from  [capabilites tutorial - Adding security context at container level](0-capabilities.archive.md#Adding-security-context-at-container-level).
 As we want to test ingress and egress, we will:
 - add a nginx container to test ingress.
 - provide a service to access the wevserver
@@ -49,7 +49,7 @@ nginx: [warn] the "user" directive makes sense only if the master process runs w
 nginx: [emerg] mkdir() "/var/cache/nginx/client_temp" failed (13: Permission denied)
 ````
 
-As described in [capabilities](./0-capabilities.md), we will remove security context to run as root.
+As described in [capabilities](0-capabilities.archive.md), we will remove security context to run as root.
 
 Thus 
 
