@@ -1,3 +1,8 @@
 .idea
 current.md
 *ama*
+Setup/ClusterSetup/LocalRegistrySetup/localregistry.yaml
+Setup/ClusterSetup/LocalRegistrySetup/registryvol.yaml
+Setup/ClusterSetup/out.txt
+*.vagrant
+*.crt

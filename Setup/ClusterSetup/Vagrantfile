@@ -1,0 +1,46 @@
+Vagrant.configure("2") do |config|
+  config.vm.provision "shell", inline: "echo Hello"
+
+  config.vm.define "k8sMaster" do |k8sMaster|
+    # Use this version which is compliant with k8sMaster.sh
+    k8sMaster.vm.box = "bento/ubuntu-18.04"
+
+	# Folder sync between host and guest
+	k8sMaster.vm.synced_folder '.', '/vagrant', type: "nfs", disabled: false
+	k8sMaster.vm.synced_folder 'C:\git', '/git', type: "nfs", disabled: false
+
+	# Port forwarding
+	# For k8s api
+	k8sMaster.vm.network "forwarded_port", guest: 6443, host: 6443, auto_correct: true
+	# For Nodeport tests
+	k8sMaster.vm.network "forwarded_port", guest: 32000, host: 32000, auto_correct: true
+    # For Traefik UI
+	k8sMaster.vm.network "forwarded_port", guest: 8080, host: 8880, auto_correct: true
+	# For Traefik ingress
+	k8sMaster.vm.network "forwarded_port", guest: 80, host: 9980, auto_correct: true
+	# Note that if we forget to perform port fw here we can make it in network section of virtual box
+
+    k8sMaster.vm.hostname = "k8sMaster"
+	k8sMaster.vm.provider "virtualbox" do |v|
+		v.memory = 2048
+		# Need at least 2 for pre-fligth check
+		v.cpus = 2 
+	end
+
+	# Here we set privileged to false, to not run script as root, otherwise when doing vagrant ssh
+	# It will not setup the vagrant user
+	# And to fix it we will have to copy the kubeconfig file in vagrant user $HOME
+	k8sMaster.vm.provision "shell", privileged: false, inline: <<-SHELL
+	    # All script have to be in LF
+
+        # Setup cluster
+        bash /vagrant/insecureCertificate.sh
+        bash /vagrant/k8sMaster.sh | tee ~/master.out
+        # Additional setup
+        bash /vagrant/setupBash.sh
+        bash /vagrant/removeTaints.sh
+	SHELL
+	
+  end
+  
+end

@@ -14,12 +14,11 @@ import socket
 while True :
   host = socket.gethostname()
   date = time.strftime("%Y-%m-%d %H:%M:%S")
-  print(f"> host: {host}\n> date: {date}\n")
-  time.sleep(5)
-' > testregistry.py
+  print(f">> host: {host}  >> date: {date}")
+  time.sleep(5)' > testregistry.py
 
 echo '
-FROM python:3
+FROM python:3.6
 ADD testregistry.py /
 # https://stackoverflow.com/questions/29663459/python-app-does-not-print-anything-when-running-detached-in-docker
 CMD ["python", "-u", "./testregistry.py"]
@@ -32,11 +31,11 @@ sudo docker tag testregistry $registry_svc_ip:5000/testregistry
 sudo docker push $registry_svc_ip:5000/testregistry
 # sudo docker run $registry_svc_ip:5000/testregistry
 
-k delete deployment test-registry
-k create deployment test-registry --image $registry_svc_ip:5000/testregistry -o yaml
+kubectl delete deployment test-registry
+kubectl create deployment test-registry --image $registry_svc_ip:5000/testregistry -o yaml
 
-sleep 30
-export POD_NAME_1=$(k get pods -o wide | grep "test-registry-" |  sed -n 1p | awk '{ print $1 }')
+sleep 10
+export POD_NAME_1=$(kubectl get pods -o wide | grep "test-registry-" |  sed -n 1p | awk '{ print $1 }')
 echo $POD_NAME_1
-k logs -f $POD_NAME_1
+kubectl logs -f $POD_NAME_1
 # We see it outputs logs!

@@ -1,16 +1,20 @@
 # Usage: sudo ./deploy-local-registry.yaml
 
-# Global clean-up
 echo 'Clean up'
+
+sudo rm -f /etc/docker/daemon.json
+sudo systemctl stop docker.service
+sleep 5
+sudo systemctl start docker.service
+
+sleep 15
+bash ../restart.sh
+sleep 20
+
 kubectl delete deployment registry
 kubectl delete pvc registry-claim # remove before vol otherwise will bound to new pv
 # If volume deletion issue: perform `k edit pv registryvol` remove kubernetes.io/pv-protection and rerun script
 kubectl delete pv registryvol
-# Invalid json can break docker and k8s (so delete and in can run ./restart.sh)
-# sudo rm -rf /etc/docker/daemon.json
-# sudo systemctl restart docker.service
-# sudo systemctl status docker.service | grep Active
-# sudo dockerd --debug for investigation
 
 # Create volume
 echo 'Volume creation'
@@ -128,6 +132,13 @@ sudo cat /etc/docker/daemon.json
 sudo systemctl restart docker.service
 sudo systemctl status docker.service | grep Active
 
-# May need to run ./restart.sh if error
 # The connection to the server 10.0.2.15:6443 was refused - did you specify the right host or port?
-# as we restarted docker
+# as we restarted docker, thus run restart
+sleep 20
+bash ../restart.sh
+
+# If can not start docker this may be due to insecure registry file which is invalid because of IP
+# sudo rm -f /etc/docker/daemon.json
+# sudo systemctl restart docker.service
+# sudo systemctl status docker.service | grep Active
+# sudo dockerd --debug for investigation

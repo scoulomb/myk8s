@@ -1,9 +1,9 @@
 ## Prereq
 
-- Start up k8s VM with [Vagrant](../tooling/SimpleSetup)
-- [restart script](../tooling/SimpleSetup/restart.sh) to restart kube
-- [registry deployment](../tooling/deploy-local-registry.sh)
-- [test local registry](../tooling/test-local-registry.sh)
+- Start up k8s VM with [Vagrant](../Setup/ClusterSetup)
+- [restart script](../Setup/ClusterSetup/restart.sh) to restart kube
+- [registry deployment](../Setup/ClusterSetup/LocalRegistrySetup/deploy-local-registry.sh)
+- [test local registry](../Setup/ClusterSetup/LocalRegistrySetup/test-local-registry.sh)
 
 ## Make a v2
 
