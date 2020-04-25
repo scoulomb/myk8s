@@ -455,11 +455,9 @@ See [here](https://superuser.com/questions/104015/removing-write-permission-does
 But it does not bypass capa as I could read.
 - I can not perform chown because we dropped `CHOWN` 
 
+- See [part 2](0-capabilities-bis-part2-admission-controller-setup.md)
 
-============ HERE ================= STOP ======
-Found explanation SO question detailed here!
-Luska ok modified admin container -> Add `STS_TIME` as I did actually.OK
-LFD make capa on non root user leading to confusion
-Own machine OK
-Link gcp ok
-See [part 2](0-capabilities-bis-part4.md)
+Some notes:
+- Found explanation SO question detailed here!
+- Luska ok modified admin container -> Add `STS_TIME` as I did actually OK
+- LFD make capa on non root user leading to confusion
