@@ -1,0 +1,49 @@
+Vagrant.configure("2") do |config|
+  config.vm.provision "shell", inline: "echo Hello"
+
+  config.vm.define "minikube" do |minikube|
+    # Use this version which is compliant with minikube.sh
+    minikube.vm.box = "bento/ubuntu-18.04"
+
+	# Folder sync between host and guest
+	minikube.vm.synced_folder '.', '/vagrant', type: "nfs", disabled: false
+	minikube.vm.synced_folder 'C:\git', '/git', type: "nfs", disabled: false
+
+	minikube.vm.network "forwarded_port", guest: 8080, host: 8888, auto_correct: true
+
+    minikube.vm.hostname = "minikube"
+	minikube.vm.provider "virtualbox" do |v|
+		v.memory = 2048
+		v.cpus = 2 
+	end
+
+	minikube.vm.provision "shell", privileged: true, inline: <<-SHELL
+        echo "Setup CA"
+        bash /vagrant/insecureCertificate.sh
+
+        echo "Install kubectl and docker"
+        sudo sh -c "echo 'deb http://apt.kubernetes.io/ kubernetes-xenial main' >> /etc/apt/sources.list.d/kubernetes.list"
+        sudo sh -c "curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -"
+        sleep 2
+        sudo apt-get update && sudo apt-get upgrade -y
+        sudo apt-get install -y kubectl=1.16.1-00
+        bash /vagrant/installDocker.sh
+
+        echo "Install minikube"
+        # I use driver none to not have a VM in a VM :)
+        curl -Lo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 && chmod +x minikube
+        sudo mkdir -p /usr/local/bin/
+        sudo install minikube /usr/local/bin/
+        sudo apt-get install conntrack
+        # Then run in ssh
+        # See Security/0-capabilities-bis-part2
+        # sudo minikube start --driver=none
+
+        bash /vagrant/setupBash.sh
+
+        echo "If some script failed run them directly (in particular docker)!"
+	SHELL
+	
+  end
+  
+end

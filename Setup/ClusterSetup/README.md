@@ -21,6 +21,7 @@ vagrant plugin install vagrant-vbguest # Install guest addition
 Then 
 
 ````buildoutcfg
+cd /c/git_pub/myk8s/Setup/ClusterSetup
 vagrant up
 vagrant ssh k8sMaster # k8sMaster is optional given we have a single machine here
 ````
@@ -93,7 +94,7 @@ k get pods
 ````
 This is ok.
 
-For example first version of the script had an issue:
+For example we could have another issue:
 
 ````buildoutcfg
 vagrant@k8sMaster:~$ k get pods --all-namespaces
@@ -130,6 +131,7 @@ vagrant@k8sMaster:~$ k describe po | grep FailedScheduling
 ````
 
 It was due to an error on `insecureCertificate` script (CR/LF).
+See [fix line separator issue](../FixLineSpeparatorIssue.md).
 So I run the script again, delete the calico pod and it worked
 
 ````buildoutcfg

@@ -39,6 +39,8 @@ Vagrant.configure("2") do |config|
         # Additional setup
         bash /vagrant/setupBash.sh
         bash /vagrant/removeTaints.sh
+
+        echo "If some script failed run them directly (in particular docker)!"
 	SHELL
 	
   end

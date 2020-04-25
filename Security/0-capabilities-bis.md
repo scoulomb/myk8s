@@ -462,4 +462,4 @@ Luska ok modified admin container -> Add `STS_TIME` as I did actually.OK
 LFD make capa on non root user leading to confusion
 Own machine OK
 Link gcp ok
-See [part 2](./0-capabilities-bis-part2.md)
+See [part 2](0-capabilities-bis-part4.md)
