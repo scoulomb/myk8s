@@ -155,3 +155,5 @@ kube-system   storage-provisioner                1/1     Running             0  
 So options in k8s in action book are not accurate.
 
 And for auto-completion with root do `/vagrant/setupBash.sh; source ~/.bashrc`.
+
+We will now follow this procedure in next [section](0-capabilities-bis-part3-psp-tutorial.md)
