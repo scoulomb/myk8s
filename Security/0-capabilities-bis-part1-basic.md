@@ -381,7 +381,7 @@ So I reached the same conclusion as [first version](0-capabilities.archive.md).
 All info in first version is there.
 And this answer my question in [SO](https://stackoverflow.com/questions/61043365/operation-not-permitted-when-performing-a-traceroute-from-a-container-deployed-i).
 
-#### Test: Adding/removing capabilities to root 
+#### Test adding and removing capabilities to root 
 
 In [first test](#Docker-image-with-user-0)
 Everything was possible except changing the date.

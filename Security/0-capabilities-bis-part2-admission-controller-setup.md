@@ -19,6 +19,7 @@ It seems easy
 - https://kubernetes.io/docs/concepts/policy/pod-security-policy/#enabling-pod-security-policies
 - https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#how-do-i-turn-on-an-admission-controller
 - https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/-> search PodSecurityPolicy
+- https://docs.microsoft.com/en-us/azure/aks/use-pod-security-policies#allow-user-account-to-use-the-custom-pod-security-policy
 
 ## But I am using kubeadm 
 
@@ -128,7 +129,7 @@ I0425 16:26:24.036955       1 event.go:278] Event(v1.ObjectReference{Kind:"Daemo
 Most likely because of pod security policy so trick is normal start without admission controller 
 and add them after
 
-FINAL SOLUTION:L
+## FINAL SOLUTION
 
 ````buildoutcfg
 minikube delete
