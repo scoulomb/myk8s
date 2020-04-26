@@ -458,3 +458,5 @@ Observations made here confirms what is explained here in the introduction.
 https://www.openshift.com/blog/jupyter-on-openshift-part-6-running-as-an-assigned-user-id
 
 And actually Openshift is just reusing psp here.
+
+See [next section](./0-capabilities-bis-part5-manage-not-run-as-uid-0.md) for how to deal when can not be root

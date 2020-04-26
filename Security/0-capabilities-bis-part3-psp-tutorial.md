@@ -446,7 +446,7 @@ All ok except the can I use: https://www.mankier.com/1/kubectl-auth-can-i
 pas voir plus 
 a la limie fixer la doc
 et can i -> open issue
-could worth to add how to enable psp with minikube
+could worth to add how to enable psp with minikube in doc
 
 
 
