@@ -476,10 +476,12 @@ And actually Openshift is just reusing psp here.
 
 See [next section](./0-capabilities-bis-part5-manage-not-run-as-uid-0.md) for how to deal when can not be root
 
-# Optional Tip to run container bake with root user with MustRunAsNonRoot psp
+# Optional: Going further
+
+## Optional Tip to run container bake with root user with MustRunAsNonRoot psp
 
 ````buildoutcfg
-k edit psp restricted
+k edit psp restricted # or kadm if alias
 # Make this change
 
 runAsUser:
@@ -489,8 +491,10 @@ runAsUser:
 
 ````buildoutcfg
 set -x 
-# be careful overrides default alias otherwise run as root
+# be careful overrides default alias, otherwise will run as admin and will not see it as this ressource is not namespaced or using default
+alias kadm='kubectl -n default'
 alias k='kubectl --as=system:serviceaccount:default:default-non-root -n default'
+
 k delete pod pod-with-defaults-non-root
 k run pod-with-defaults-non-root --image alpine --restart Never -- /bin/sleep 999999
 ````
@@ -585,3 +589,221 @@ Note: K8s in action uses real user not svc account
 It shows that we can use group=system:authenticated
 And this comment [here](./0-capabilities-bis-part2-admission-controller-setup.md#why-)
 And user set at server startup, what is weird is that showing  `--user bob` at the end and assumes no privileged.
+
+
+## PSP policy update
+
+From k8s in action, 13.3.1:
+> When someone posts a pod resource to the API server, the PodSecurityPolicy admission control plugin validates the pod definition against the configured PodSecurityPolicies. If the pod conforms to the cluster’s policies, it’s accepted and stored into etcd; otherwise it’s rejected immediately. The plugin may also modify the pod resource according to defaults configured in the policy.
+
+We have an example of capabilities [drop](#Modify-the-PSP-to-allow-a-range) showing pod modifications,
+For first part of the sentence as check is done at ETCD level a pod created before more restrictive policy should continue to run.
+
+Scenario is the following:
+- Create a PSP which enables to run a root
+- Create a pod running as root
+- Modify  the psp to to prevent to run as root
+- check can not create pod root
+- but what happens to previously launched pod?
+
+### Step1: Create a PSP which enables to run a root
+
+````buildoutcfg
+set -x 
+# be careful overrides default alias, otherwise will run as admin and will not see it as this ressource is not namespaced or using default
+alias kadm='kubectl -n default'
+alias k='kubectl --as=system:serviceaccount:default:default-non-root -n default'
+kadm edit psp restricted
+
+# Make this change
+
+runAsUser:
+    rule: 'MustRunAsNonRoot'
+
+# to 
+
+runAsUser:
+ rule: MustRunAs
+ ranges:
+   - max: 5
+     min: 0
+````
+
+### Step 2: Create a pod running as root
+
+Run as root
+````buildoutcfg
+k run pod-root --image alpine --restart Never -- /bin/sleep 999999
+````
+
+It is working 
+
+````buildoutcfg
+root@minikube:~# k exec -it pod-root -- id
++ kubectl --as=system:serviceaccount:default:default-non-root -n default exec -it pod-root -- id
+uid=0(root) gid=0(root) groups=0(root),1(bin),2(daemon),3(sys),4(adm),6(disk),10(wheel),11(floppy),20(dialout),26(tape),27(video)
+````
+
+
+### Step 3:  Modify  the psp to to prevent to run as root
+
+
+````buildoutcfg
+kadm edit psp restricted
+
+# Make this change
+runAsUser:
+ rule: MustRunAs
+ ranges:
+   - max: 5
+     min: 0
+
+# to 
+
+runAsUser:
+    rule: 'MustRunAsNonRoot'
+
+````
+
+### Step 4: check can not create pod root
+
+````buildoutcfg
+k run pod-root-after-psp-edit --image alpine --restart Never -- /bin/sleep 999999
+````
+The image will not run, output is 
+
+````buildoutcfg
+root@minikube:~# kadm edit psp restricted
++ kubectl -n default edit psp restricted
+podsecuritypolicy.policy/restricted edited
+root@minikube:~# k run pod-root-after-psp-edit --image alpine --restart Never -- /bin/sleep 999999
++ kubectl --as=system:serviceaccount:default:default-non-root -n default run pod-root-after-psp-edit --image alpine --restart Never -- /bin/sleep 999999
+pod/pod-root-after-psp-edit created
+root@minikube:~#  k describe pod/pod-root-after-psp-edit | grep -C 3 Failed
++ grep --color=auto -C 3 Failed
++ kubectl --as=system:serviceaccount:default:default-non-root -n default describe pod/pod-root-after-psp-edit
+  Normal   Scheduled  57s               default-scheduler  Successfully assigned default/pod-root-after-psp-edit to minikube
+  Normal   Pulling    7s (x5 over 56s)  kubelet, minikube  Pulling image "alpine"
+  Normal   Pulled     2s (x5 over 53s)  kubelet, minikube  Successfully pulled image "alpine"
+  Warning  Failed     2s (x5 over 53s)  kubelet, minikube  Error: container has runAsNonRoot and image will run as root
+root@minikube:~# k get pods | grep pod-root
++ grep --color=auto pod-root
++ kubectl --as=system:serviceaccount:default:default-non-root -n default get pods
+pod-root                            1/1     Running                      0          14m
+pod-root-after-psp-edit             0/1     CreateContainerConfigError   0          95s
+
+root@minikube:~# k exec -it pod-root-after-psp-edit -- id
++ kubectl --as=system:serviceaccount:default:default-non-root -n default exec -it pod-root-after-psp-edit -- id
+error: unable to upgrade connection: container not found ("pod-root-after-psp-edit")
+````
+
+We can not create a root pod
+
+### Step 5: but what happens to previously launched pod?
+
+We can see in last output previous pod is still running.
+And still root !
+
+````buildoutcfg
+root@minikube:~# k exec -it pod-root -- id
++ kubectl --as=system:serviceaccount:default:default-non-root -n default exec -it pod-root -- id
+uid=0(root) gid=0(root) groups=0(root),1(bin),2(daemon),3(sys),4(adm),6(disk),10(wheel),11(floppy),20(dialout),26(tape),27(video)
+root@minikube:~#
+````
+as uid is 0.
+OK
+
+We can see pod modification here:
+
+````buildoutcfg
+root@minikube:~# k get pod pod-root-after-psp-edit -o yaml
++ kubectl --as=system:serviceaccount:default:default-non-root -n default get pod pod-root-after-psp-edit -o yaml
+apiVersion: v1
+kind: Pod
+[...]
+    securityContext:
+      allowPrivilegeEscalation: false
+      runAsNonRoot: true
+
+root@minikube:~# k get pod pod-root -o yaml
++ kubectl --as=system:serviceaccount:default:default-non-root -n default get pod pod-root -o yaml
+apiVersion: v1
+kind: Pod
+[...]
+    securityContext:
+      allowPrivilegeEscalation: false
+      runAsUser: 0
+````
+
+## Pod modifications adding default capabilities through PSP
+
+- https://kubernetes.io/docs/concepts/policy/pod-security-policy/
+- https://sysdig.com/blog/enable-kubernetes-pod-security-policy/
+Make this change:
+
+````buildoutcfg
+
+kadm edit psp restricted
+
+# Add 
+
+spec:
+  allowPrivilegeEscalation: false
+  defaultAddCapabilities: # Add
+  - NET_ADMIN # Add
+  - IPC_LOCK  # Add
+
+# change 
+
+runAsUser:
+  rule: MustRunAsNonRoot
+
+
+to 
+
+runAsUser:
+  ranges:
+  - max: 42
+    min: 1
+  rule: MustRunAs
+````
+
+And then do 
+````
+k run pod-root-adding-default-capa --image alpine --restart Never -- /bin/sleep 999999
+````
+
+We can see default capabilities have been added:
+
+````buildoutcfg
+root@minikube:~# k get pods | grep pod-root-adding-default-capa
++ kubectl --as=system:serviceaccount:default:default-non-root -n default get pods
++ grep --color=auto pod-root-adding-default-capa
+pod-root-adding-default-capa        1/1     Running                      0          2m15s
+root@minikube:~# k get pod pod-root-adding-default-capa -o yaml | grep -A 6 securityContext
++ grep --color=auto -A 6 securityContext
++ kubectl --as=system:serviceaccount:default:default-non-root -n default get pod pod-root-adding-default-capa -o yaml
+        f:securityContext: {}
+        f:terminationGracePeriodSeconds: {}
+    manager: kubectl
+    operation: Update
+    time: "2020-04-27T13:59:10Z"
+  - apiVersion: v1
+    fieldsType: FieldsV1
+--
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        add:
+        - IPC_LOCK
+        - NET_ADMIN
+      runAsUser: 1
+--
+  securityContext:
+    fsGroup: 1
+    supplementalGroups:
+    - 1
+  serviceAccount: default
+  serviceAccountName: default
+  terminationGracePeriodSeconds: 30
+````
