@@ -143,16 +143,16 @@ pod/pause created
 
 My environment is ready for testing
 
-if later issue on pulling due to DNS issue: https://github.com/containrrr/watchtower/issues/352
-````buildoutcfg
-vagrant reload; vagrant ssh; sudo -s; 
-````
-Minikube should be ok but need to redefine aliases.
+if later issue on pulling due to [DNS issue](https://github.com/containrrr/watchtower/issues/352) do:
 
+````buildoutcfg
+vagrant reload; vagrant ssh; sudo -s;
+# redefine aliases
+````
 
 ## Tests
 
-We will now perform same test as [part 1/Docker with image user 0](./0-capabilities-bis-part1-basic.md#Docker image with user 0) 
+We will now perform same test as [part 1/Docker with image user 0](./0-capabilities-bis-part1-basic.md#Docker-image-with-user-0) 
 This test use a docker image with user 0 (root).
 
 ### With adm user
@@ -187,10 +187,10 @@ date: can't set date: Operation not permitted
 0
 ````
 
-As expected and [part 1/Docker with image user 0](./0-capabilities-bis-part1-basic.md#Docker-image-with-user-0) . We are using UID defined in container which is 0.
+As expected and [part 1/Docker with image user 0](./0-capabilities-bis-part1-basic.md#Docker-image-with-user-0).
+We are using UID defined in container which is 0.
 
 ### With non root user 
-
 
 ````buildoutcfg
 source capa_test.sh
@@ -198,7 +198,6 @@ k delete pod pod-with-defaults-non-root
 k run pod-with-defaults-non-root --image alpine --restart Never -- /bin/sleep 999999
 capa_test pod-with-defaults-non-root
 ````
-
 
 The image will not run:
 
@@ -213,13 +212,13 @@ Events:
 ````
 
 Because of the pod security policy!
-See [notes below](#Optional-Tip-to-run-container-bake-with-root-user-with MustRunAsNonRoot-psp) for a top to still run this pod even if we have:
 ````buildoutcfg
 runAsUser:
     # Require the container to run without root privileges.
     rule: 'MustRunAsNonRoot'
 ````
-And a container with id 0.
+And because container has id 0.
+See [notes below](#Optional-Tip-to-run-container-bake-with-root-user-with-MustRunAsNonRoot-psp) for a top to still run this pod even if we have:
 
 ### Modify the PSP to allow a range
 
@@ -345,9 +344,9 @@ It is a way to prevent a container to run as root, but misleading as the user ru
 
 (k8s in action, 13.3.2, Deploying a pod with a container image with an out-of-range user id)
 (except using user with 5 in a new built container image,
-even if not artifactory I could do the same with pull policy and 
-run same test as in part 1 with custom image but would not show much more uid 0 is a particular case 
-which is shown [here](./0-capabilities-bis-part1-basic.md#Specific-user-with-docker-image-with-user-7777))
+even if not artifactory I could do the same with pull policy `never` and 
+run same test as in part 1 with custom image. But this would not show much more than uid 0 which is a particular case 
+as shown [here](./0-capabilities-bis-part1-basic.md#Specific-user-with-docker-image-with-user-7777))
 
 
 ### Run with a user outside the range allowed in PSP
@@ -476,9 +475,11 @@ And actually Openshift is just reusing psp here.
 
 See [next section](./0-capabilities-bis-part5-manage-not-run-as-uid-0.md) for how to deal when can not be root
 
-# Optional: Going further
+## Optional: Going further
 
-## Optional Tip to run container bake with root user with MustRunAsNonRoot psp
+### Optional Tip to run container bake with root user with MustRunAsNonRoot psp
+
+If we do not care to be root!
 
 ````buildoutcfg
 k edit psp restricted # or kadm if alias
@@ -591,7 +592,7 @@ And this comment [here](./0-capabilities-bis-part2-admission-controller-setup.md
 And user set at server startup, what is weird is that showing  `--user bob` at the end and assumes no privileged.
 
 
-## PSP policy update
+### PSP policy update
 
 From k8s in action, 13.3.1:
 > When someone posts a pod resource to the API server, the PodSecurityPolicy admission control plugin validates the pod definition against the configured PodSecurityPolicies. If the pod conforms to the cluster’s policies, it’s accepted and stored into etcd; otherwise it’s rejected immediately. The plugin may also modify the pod resource according to defaults configured in the policy.
@@ -606,7 +607,7 @@ Scenario is the following:
 - check can not create pod root
 - but what happens to previously launched pod?
 
-### Step1: Create a PSP which enables to run a root
+#### Step1: Create a PSP which enables to run a root
 
 ````buildoutcfg
 set -x 
@@ -629,7 +630,7 @@ runAsUser:
      min: 0
 ````
 
-### Step 2: Create a pod running as root
+#### Step 2: Create a pod running as root
 
 Run as root
 ````buildoutcfg
@@ -645,7 +646,7 @@ uid=0(root) gid=0(root) groups=0(root),1(bin),2(daemon),3(sys),4(adm),6(disk),10
 ````
 
 
-### Step 3:  Modify  the psp to to prevent to run as root
+#### Step 3:  Modify  the psp to to prevent to run as root
 
 
 ````buildoutcfg
@@ -665,7 +666,7 @@ runAsUser:
 
 ````
 
-### Step 4: check can not create pod root
+#### Step 4: check can not create pod root
 
 ````buildoutcfg
 k run pod-root-after-psp-edit --image alpine --restart Never -- /bin/sleep 999999
@@ -699,7 +700,7 @@ error: unable to upgrade connection: container not found ("pod-root-after-psp-ed
 
 We can not create a root pod
 
-### Step 5: but what happens to previously launched pod?
+#### Step 5: but what happens to previously launched pod?
 
 We can see in last output previous pod is still running.
 And still root !
@@ -735,10 +736,13 @@ kind: Pod
       runAsUser: 0
 ````
 
-## Pod modifications adding default capabilities through PSP
+### Pod modifications adding default capabilities through PSP
+
+We will show how psp edit pod sepc before pushing it to etcd.
 
 - https://kubernetes.io/docs/concepts/policy/pod-security-policy/
 - https://sysdig.com/blog/enable-kubernetes-pod-security-policy/
+
 Make this change:
 
 ````buildoutcfg

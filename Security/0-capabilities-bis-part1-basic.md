@@ -232,7 +232,7 @@ command terminated with exit code 1
                                                                       
 ````
 
-Same result as [Specific user with docker image with user 0](#Specific user with docker image with user 0)
+Same result as [Specific user with docker image with user 0](#Specific-user-with-docker-image-with-user-0)
 Where we can clearly user in image is overriden.
 
 Note it is also possible to define sec context at pod level in `spec.securityContext`.
