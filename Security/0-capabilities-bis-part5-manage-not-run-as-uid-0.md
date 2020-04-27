@@ -197,5 +197,6 @@ We can see it could be interesting to also change the user to not be root, in ca
 
 This is similar to pipenv (change finer level with group osef).
 
-Note I edited the dropall capa, still this binding error but out of scope.
-I assume pod run with psp at creation time and additivity. But did not check ok. 
+I assume PSP are additive.
+
+We will now see how to create secret in next [section](1-secret-creation-consumption.md).

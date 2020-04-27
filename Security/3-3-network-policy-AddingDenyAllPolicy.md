@@ -294,3 +294,5 @@ round-trip min/avg/max = 0.032/0.051/0.076 ms
 
 Here with policy when using POD IP it is not working anymore. 
 Only pod to same pod is working.
+
+[Next](./3-4-network-policy-RelaxingPolicy.md)

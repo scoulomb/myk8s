@@ -364,4 +364,4 @@ N4b1lxdVlrbmQ4S2sxSXB1eVFxUXBnTTIxLVducTgtY3Fuc2VZYzJ2SnhVWDRtaEpKZDBkR0xyeGxSTG
 
 it is working
 
-OK CCL
+We will now [see network policy](./3-1-network-policy-NoPolicy.md).

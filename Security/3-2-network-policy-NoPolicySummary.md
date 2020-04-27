@@ -286,3 +286,5 @@ round-trip min/avg/max = 0.062/0.116/0.172 ms
 Even if no policy, ping works with POD IP but not service IP (because a service expose a ip/port here 80)
 except when  in `app to app` case because DNS in that case returns pod ip and not service ip.
 Here `192.168.16.188`.
+
+[Next](./3-3-network-policy-AddingDenyAllPolicy.md)

@@ -437,6 +437,8 @@ Error from server (Forbidden): deployments.apps is forbidden: User "system:servi
 ````
 
 
+See next [section on psp](0-capabilities-bis-part4-psp-overrides-uid-capabilities.md)
+
 ## Status:
 - All OK except
 - "Then I a pull image error, I did not push investigation further"" -> OK, do not go further

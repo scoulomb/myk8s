@@ -249,3 +249,5 @@ www.mozilla.org (104.16.143.228:80) open
 ````
 
 Egress is working
+
+[Next](./3-2-network-policy-NoPolicySummary.md)
