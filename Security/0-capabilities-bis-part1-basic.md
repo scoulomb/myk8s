@@ -260,9 +260,13 @@ $ capsh --decode=00000000a80425fb
 
 ###  Adding capabilities to non root containers
 
+Note `CHOWN`, `NET_RAW` was already there by default.
+`CHOWN` enable to do a chown wile `NET_RAW` enable to perform a traceroute.
+This is proven [below](#Test-adding-and-removing-capabilities-to-root-in-Kubernetes)
 
-Note CHOWN was already there by default, adding `CAP_FOWNER`, `CAP_SYS_TIME`, `CAP_NET_ADMIN`.
-And we were not able to perform a chown in non root container...
+Still we were not able to perform a chown/traceroute in non root container...
+
+Adding more capabilities in same area: `CAP_FOWNER`, `CAP_SYS_TIME`, `CAP_NET_ADMIN`.
 
 ````buildoutcfg
 k delete pod pod-as-user-guest-with-new-capa
@@ -315,7 +319,9 @@ command terminated with exit code 1
 1
 ```` 
 
-It confirm that even if give container right capabilites but not root it still does not work.
+Still not able to do traceroute or chown,
+
+It confirm that even if give container more capabilites but not root it still does not work.
 
 New capa are visible here:
 
@@ -352,9 +358,10 @@ $ capsh --decode=00000000aa0435fb | grep chown
 #### Constat
 
 Conclusion of previous section is that even if container has correct capabilities,
-non root user can not perform special operation.
+non root user can still not perform special operation.
+This behavior is distribution depdendent (see [SO question](#Side-note-based-on-SO-answer)).
 
-
+#### We can remove capabilities to root container:
 This is confirmed by this quick test:
 
 - Container root with no chown capa (operation not permitted) and with it (working)
@@ -381,7 +388,7 @@ So I reached the same conclusion as [first version](0-capabilities.archive.md).
 All info in first version is there.
 And this answer my question in [SO](https://stackoverflow.com/questions/61043365/operation-not-permitted-when-performing-a-traceroute-from-a-container-deployed-i).
 
-#### Test adding and removing capabilities to root 
+#### Test adding and removing capabilities to root in Kubernetes
 
 In [first test](#Docker-image-with-user-0)
 Everything was possible except changing the date.
@@ -395,7 +402,7 @@ $ capsh --decode=00000000a80425fb
 0x00000000a80425fb=cap_chown,cap_dac_override,cap_fowner,cap_fsetid,cap_kill,cap_setgid,cap_setuid,cap_setpcap,cap_net_bind_service,cap_net_raw,cap_sys_chroot,cap_mknod,cap_audit_write,cap_setfcap
 ````
 
-I will drop cap_chown, cap_fowner, cap_fsetid, cap_net_bind_service,cap_net_raw.
+I will drop cap_chown, cap_net_raw.
 I will add cap_sys_time
 
 
@@ -454,6 +461,147 @@ It is because we add `SYS_TIME` capabilities.
 See [here](https://superuser.com/questions/104015/removing-write-permission-does-not-prevent-root-from-writing-to-the-file).
 But it does not bypass capa as I could read.
 - I can not perform chown because we dropped `CHOWN` 
+
+
+#### Side note based on SO answer
+
+As spotted by SO question.
+The behavior which prevent from running a traceroute when not root is distribution dependent (busybox,alpine != ubuntu).
+Cf answer here: https://stackoverflow.com/questions/61043365/operation-not-permitted-when-performing-a-traceroute-from-a-container-deployed-i/61396011#61396011
+
+Here I have a Ubuntu container baked with root uid, and which runs with a specific user id.
+(Note test is on minikube, I run with a root kubectl user to not have psp applied)/
+
+````buildoutcfg
+mkdir ubuntu
+cd ubuntu 
+echo 'FROM ubuntu 
+RUN apt-get update
+RUN apt-get install traceroute
+'> customUbuntu.Dockerfile
+sudo docker build . -f customUbuntu.Dockerfile -t customubuntu
+
+echo '
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ubuntu
+spec:
+  containers:
+  - name: main
+    image: customubuntu
+    imagePullPolicy: Never
+    command: ["/bin/sleep", "999999"]
+    securityContext:
+      runAsUser: 2000
+
+        add: ["SYS_TIME"]
+        drop: ["CHOWN", "NET_RAW"]' > pod-root-with-modified-capa.yaml ' > ubuntu.yaml
+                             
+kubectl  create -f  ubuntu.yaml  
+````
+
+
+Output is:
+
+````buildoutcfg
+root@minikube:~/ubuntu/ubuntu# capa_test ubuntu
++ capa_test ubuntu
++ set -x
++ kubectl exec ubuntu -- id
+uid=2000 gid=0(root) groups=0(root)
++ grep --color=auto CapBnd
++ kubectl exec ubuntu -- grep Cap /proc/1/status
+CapBnd: 00000000a80425fb
++ kubectl exec ubuntu -- traceroute 127.0.0.1
+traceroute to 127.0.0.1 (127.0.0.1), 30 hops max, 60 byte packets
+ 1  localhost (127.0.0.1)  0.015 ms  0.003 ms  0.003 ms
++ kubectl exec ubuntu -- date +%T -s 12:00:00
+date: cannot set date: Operation not permitted
+12:00:00
+command terminated with exit code 1
++ true
++ kubectl exec ubuntu -- chmod 777 home
+chmod: changing permissions of 'home': Operation not permitted
+command terminated with exit code 1
++ echo 1
+1
++ kubectl exec ubuntu -- chown nobody /
+chown: changing ownership of '/': Operation not permitted
+command terminated with exit code 1
++ echo 1
+1
+````
+
+I can perform a traeceroute even if not root.
+But even when dropping capabilities
+
+````buildoutcfg
+echo '
+apiVersion: v1
+kind: Pod
+metadata:
+  name: customubuntudrop3capa
+spec:
+  containers:
+  - name: main
+    image: customubuntu
+    imagePullPolicy: Never
+    command: ["/bin/sleep", "999999"]
+    securityContext:
+      runAsUser: 2000 
+      capabilities:
+        drop: ["NET_RAW", "NET_BIND_SERVICE", "NET_ADMIN"]' > customubuntu_drop_3_capa.yaml
+                             
+kubectl  create -f customubuntu_drop_3_capa.yaml
+````
+
+Output is 
+
+
+````buildoutcfg
+root@minikube:~/ubuntu/ubuntu# capa_test customubuntudrop3capa
++ capa_test customubuntudrop3capa
++ set -x
++ kubectl exec customubuntudrop3capa -- id
+uid=2000 gid=0(root) groups=0(root)
++ kubectl exec customubuntudrop3capa -- grep Cap /proc/1/status
++ grep --color=auto CapBnd
+CapBnd: 00000000a80401fb
++ kubectl exec customubuntudrop3capa -- traceroute 127.0.0.1
+traceroute to 127.0.0.1 (127.0.0.1), 30 hops max, 60 byte packets
+ 1  localhost (127.0.0.1)  0.012 ms  0.003 ms  0.003 ms
++ kubectl exec customubuntudrop3capa -- date +%T -s 12:00:00
+date: cannot set date: Operation not permitted
+12:00:00
+command terminated with exit code 1
++ true
++ kubectl exec customubuntudrop3capa -- chmod 777 home
+chmod: changing permissions of 'home': Operation not permitted
+command terminated with exit code 1
++ echo 1
+1
++ kubectl exec customubuntudrop3capa -- chown nobody /
+chown: changing ownership of '/': Operation not permitted
+command terminated with exit code 1
++ echo 1
+1
+````
+
+and with 
+
+````buildoutcfg
+$ capsh --decode=00000000a80401fb
+0x00000000a80401fb=cap_chown,cap_dac_override,cap_fowner,cap_fsetid,cap_kill,cap_setgid,cap_setuid,cap_setpcap,cap_sys_chroot,cap_mknod,cap_audit_write,cap_setfcap
+````
+
+Same if run as root (uid 0)
+
+So comment to answer in SO 
+> This helps me understand a bit more. I agree that for busybox/alpine image it is not possible to run a traceroute when not root whatever the capabilities (PS: already possible with default added capa). However it is possible to drop capabilities and prevent root user from doing a traceroute. However I do not fully agree with last part of your answer because it seems that with the ubuntu image even when  explicitly dropping ["NET_RAW", "NET_BIND_SERVICE", "NET_ADMIN"], with root or non root user I can still perform a traceroute. 
+
+
+OK CLEAR OK - come back only if update
 
 - See [part 2](0-capabilities-bis-part2-admission-controller-setup.md)
 
