@@ -213,6 +213,13 @@ Events:
 ````
 
 Because of the pod security policy!
+See [notes below](#Optional-Tip-to-run-container-bake-with-root-user-with MustRunAsNonRoot-psp) for a top to still run this pod even if we have:
+````buildoutcfg
+runAsUser:
+    # Require the container to run without root privileges.
+    rule: 'MustRunAsNonRoot'
+````
+And a container with id 0.
 
 ### Modify the PSP to allow a range
 
@@ -336,6 +343,13 @@ It equivalent to have:
 
 It is a way to prevent a container to run as root, but misleading as the user running can not be found in pod spec and not the on in container.
 
+(k8s in action, 13.3.2, Deploying a pod with a container image with an out-of-range user id)
+(except using user with 5 in a new built container image,
+even if not artifactory I could do the same with pull policy and 
+run same test as in part 1 with custom image but would not show much more uid 0 is a particular case 
+which is shown [here](./0-capabilities-bis-part1-basic.md#Specific-user-with-docker-image-with-user-7777))
+
+
 ### Run with a user outside the range allowed in PSP
 
 ````buildoutcfg
@@ -365,6 +379,7 @@ Error from server (Forbidden): error when creating "pod-outside-range.yaml": pod
 ````
 
 So it is not possible to force for a non noot user.
+(k8s in action, 13.3.2, Deploying a pod with runAsUser outside of the policy’s range)
 
 ### Run with an already assigned user and use runAs in the range
 
@@ -460,3 +475,113 @@ https://www.openshift.com/blog/jupyter-on-openshift-part-6-running-as-an-assigne
 And actually Openshift is just reusing psp here.
 
 See [next section](./0-capabilities-bis-part5-manage-not-run-as-uid-0.md) for how to deal when can not be root
+
+# Optional Tip to run container bake with root user with MustRunAsNonRoot psp
+
+````buildoutcfg
+k edit psp restricted
+# Make this change
+
+runAsUser:
+    # Require the container to run without root privileges.
+    rule: 'MustRunAsNonRoot'
+````
+
+````buildoutcfg
+set -x 
+# be careful overrides default alias otherwise run as root
+alias k='kubectl --as=system:serviceaccount:default:default-non-root -n default'
+k delete pod pod-with-defaults-non-root
+k run pod-with-defaults-non-root --image alpine --restart Never -- /bin/sleep 999999
+````
+
+
+The image will not run, output is 
+
+````buildoutcfg
+root@minikube:~# k run pod-with-defaults-non-root --image alpine --restart Never -- /bin/sleep 999999
++ kubectl --as=system:serviceaccount:default:default-non-root -n default run pod-with-defaults-non-root --image alpine --restart Never -- /bin/sleep 999999
+pod/pod-with-defaults-non-root created
+root@minikube:~# k describe pods pod-with-defaults-non-root | grep -C 3 Failed
++ grep --color=auto -C 3 Failed
++ kubectl --as=system:serviceaccount:default:default-non-root -n default describe pods pod-with-defaults-non-root
+  ----     ------     ----               ----               -------
+  Normal   Scheduled  72s                default-scheduler  Successfully assigned default/pod-with-defaults-non-root to minikube
+  Normal   Pulled     12s (x4 over 56s)  kubelet, minikube  Successfully pulled image "alpine"
+  Warning  Failed     12s (x4 over 56s)  kubelet, minikube  Error: container has runAsNonRoot and image will run as root
+  Normal   Pulling    2s (x5 over 70s)   kubelet, minikube  Pulling image "alpine"
+root@minikube:~# k get pods | grep pod-with-defaults-non-root
++ grep --color=auto pod-with-defaults-non-root
++ kubectl --as=system:serviceaccount:default:default-non-root -n default get pods
+pod-with-defaults-non-root   0/1     CreateContainerConfigError   0          89s
+````
+
+The tip is to use a user
+
+````buildoutcfg
+k run pod-with-defaults-non-root-run-as --dry-run --image alpine --restart Never -o yaml -- /bin/sleep 999999 > o.yaml
+echo '
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: pod-with-defaults-non-root-run-as
+  name: pod-with-defaults-non-root-run-as
+spec:
+  containers:
+  - args:
+    - /bin/sleep
+    - "999999"
+    image: alpine
+    name: pod-with-defaults-non-root-run-as
+    resources: {}
+    securityContext:
+      runAsUser: 404 #  <-- Add this line
+  dnsPolicy: ClusterFirst
+  restartPolicy: Never
+status: {} ' > pod-with-defaults-non-root-run-as.yaml
+k create -f pod-with-defaults-non-root-run-as.yaml
+````
+
+Output is 
+
+````buildoutcfg
+root@minikube:~# capa_test pod-with-defaults-non-root-run-as
++ capa_test pod-with-defaults-non-root-run-as
++ set -x
++ kubectl exec pod-with-defaults-non-root-run-as -- id
+uid=404 gid=0(root) groups=1(bin)
++ grep --color=auto CapBnd
++ kubectl exec pod-with-defaults-non-root-run-as -- grep Cap /proc/1/status
+CapBnd: 00000000a80425fb
++ kubectl exec pod-with-defaults-non-root-run-as -- traceroute 127.0.0.1
+traceroute: socket(AF_INET,3,1): Operation not permitted
+command terminated with exit code 1
++ kubectl exec pod-with-defaults-non-root-run-as -- date +%T -s 12:00:00
+12:00:00
+date: can't set date: Operation not permitted
++ kubectl exec pod-with-defaults-non-root-run-as -- chmod 777 home
+chmod: home: Operation not permitted
+command terminated with exit code 1
++ echo 1
+1
++ kubectl exec pod-with-defaults-non-root-run-as -- chown nobody /
+chown: /: Operation not permitted
+command terminated with exit code 1
++ echo 1
+1
+
+root@minikube:~# k get pods | grep pod-with-defaults-non-root-run-as
++ grep --color=auto pod-with-defaults-non-root-run-as
++ kubectl --as=system:serviceaccount:default:default-non-root -n default get pods
+pod-with-defaults-non-root-run-as   1/1     Running                      0          16s
+````
+
+uid is 404! and run as no root
+(k8s in action, 13.3.2, Using the MustRunAsNonRoot rule in the runAsUser field)
+
+Note: K8s in action uses real user not svc account  
+It shows that we can use group=system:authenticated
+And this comment [here](./0-capabilities-bis-part2-admission-controller-setup.md#why-)
+And user set at server startup, what is weird is that showing  `--user bob` at the end and assumes no privileged.
