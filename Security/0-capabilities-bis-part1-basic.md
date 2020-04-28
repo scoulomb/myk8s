@@ -53,8 +53,9 @@ sudo docker build . -f customAlpine.Dockerfile -t customalpine
 ````
 
 And then using this custom image.
-For this we need a local registry as explained here:
+For this we need a local registry as explained here (or use alternative described [here](../README.md)):
 https://github.com/scoulomb/myk8s/blob/master/tooling/test-local-registry.sh
+
 
 We push our custom image to registry (as ephemeral need to repush at each restart)
 I could use dockerhub instead.
@@ -472,6 +473,8 @@ Cf answer here: https://stackoverflow.com/questions/61043365/operation-not-permi
 Here I have a Ubuntu container baked with root uid, and which runs with a specific user id.
 (Note test is on minikube, I run with a root kubectl user to not have psp applied)/
 
+I will use image pull policy to never to not deploy an artifactroy ([see readme](../README.md)).
+
 ````buildoutcfg
 mkdir ubuntu
 cd ubuntu 
@@ -597,11 +600,10 @@ $ capsh --decode=00000000a80401fb
 
 Same if run as root (uid 0)
 
-So comment to answer in SO 
+So comment to answer in SO
 > This helps me understand a bit more. I agree that for busybox/alpine image it is not possible to run a traceroute when not root whatever the capabilities (PS: already possible with default added capa). However it is possible to drop capabilities and prevent root user from doing a traceroute. However I do not fully agree with last part of your answer because it seems that with the ubuntu image even when  explicitly dropping ["NET_RAW", "NET_BIND_SERVICE", "NET_ADMIN"], with root or non root user I can still perform a traceroute. 
 
-
-OK CLEAR OK - come back only if update
+Added answer on 28apr19 ok - come back only if update
 
 - See [part 2](0-capabilities-bis-part2-admission-controller-setup.md)
 
