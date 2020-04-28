@@ -390,11 +390,20 @@ vagrant@k8sMaster:~$
 
 ### General
 
-- `ConfigMap`/`Secret`                <- `pod template` `spec.volumes` <- `pod template` `spec.containers.volumeMounts`
-- `hostPath volume` <- `pv` <- `pvc`  <- `pod template`  spec.volumes` <- `pod template` `spec.containers.volumeMounts`
+````html
+- `ConfigMap`/`Secret`                <- `pod template`:  `spec.volumes` <- `pod template`: `spec.containers.volumeMounts`
+- `hostPath volume` <- `pv` <- `pvc`  <- `pod template`:  `spec.volumes` <- `pod template`: `spec.containers.volumeMounts`
+````
 
-A configMap/Secret can also be consumed as environment variable
-Sometime we consume ConfigMap/Secret as a volume and have an environemt varisble which is pointing to that volume*
+We show an example of secret consumption as a volume [here](./../Security/1-secret-creation-consumption.md).
+
+A `configMap`/`Secret` can also be consumed as environment variable.
+
+Sometime we consume `ConfigMap`/`Secret` as a volume and have an environment variable which is pointing to that volume.
+Note that when we consume a `ConfigMap`/`Secret` has en environment var, if `ConfigMap`/`Secret` is updated. This wil need the pod to restart to be updated.
+Unlike volume. However there is a sync delay as explained in the [doc](https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#mounted-configmaps-are-updated-automatically).
+
+We summarize other usage of `configMap`/`Secret` in this [question](./volume4question.md#4.-ConfigMap-consumption)
 
 ### In the example
 We have a single hostPath `pv`, declared in pod template and mounted in nginx and fluentd containers
@@ -435,3 +444,4 @@ From there we can understand that we mount `/tmp/weblog/` at `/var/log/nginx` an
 - https://github.com/fluent/fluentd
 - https://stackoverflow.com/questions/20559255/error-while-installing-json-gem-mkmf-rb-cant-find-header-files-for-ruby
 - https://github.com/kubernetes/community/blob/master/contributors/design-proposals/storage/persistent-storage.md
+- [lfd259 forum questions](https://forum.linuxfoundation.org/discussion/856545/lab-5-3-with-fluentd-is-too-confusing#latest)

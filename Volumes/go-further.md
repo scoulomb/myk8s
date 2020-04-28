@@ -32,7 +32,8 @@ watch -n1 curl $POD_IP_3
 ````
 
 We can see logs appear because it is targeting the same persistent volume !
-This should be in general the case with volumes (cf. nfs which reference a server name).
+This should be in general the case with persistent volumes (cf. nfs which reference a server name).
+(not empty dir and confirmed by comment below)
 
 ## Several replicas and several nodes
 
@@ -58,7 +59,7 @@ And in this [ServerFault question](https://serverfault.com/questions/850472/why-
 
 This is also mentioned in k8s book (`6.3.1. Introducing the hostPath volume`) 
 
-## Can I use `hostPath` directly ithout `pv` and `pvc`?
+## Can I use hostPath directly without pv and pvc ?
 
 
 ```` yaml
@@ -126,10 +127,16 @@ Cf. [local persistent volume](https://kubernetes.io/blog/2019/04/04/kubernetes-1
 > While HostPath volumes may be referenced via a Persistent Volume Claim (PVC) or directly inline in a pod definition, Local Persistent Volumes can only be referenced via a PVC.
 
 So here we had
-- `ConfigMap`/`Secret`                <- `pod template` `spec.volumes` <- `pod template` `spec.containers.volumeMounts`
-- `hostPath volume` <- `pv` <- `pvc`  <- `pod template`  spec.volumes` <- `pod template` `spec.containers.volumeMounts`
+````html
+- `ConfigMap`/`Secret`                <- `pod template`:  `spec.volumes` <- `pod template`: `spec.containers.volumeMounts`
+- `hostPath volume` <- `pv` <- `pvc`  <- `pod template`:  `spec.volumes` <- `pod template`: `spec.containers.volumeMounts`
+````
 We now have
-- `hostPath volume`              `    <- `pod template`  spec.volumes` <- `pod template` `spec.containers.volumeMounts`
+````html
+- `hostPath volume`                   <- `pod template`  spec.volumes` <- `pod template` `spec.containers.volumeMounts`
+````
+
+In this [question](./volume4question.md#1.-emptyDir-and-pvc), we give more details.
 
 This is consistent with k8s book (`figure 6.8`).
 where hostPath can be replaced by  a gcePersistentDisk (or nfs).
@@ -138,6 +145,6 @@ In `Figure 6.7` they say:
 
 But when using hostPath note, we reattach to a Node!
 
-They took a reverse approach (simple to complex vs synthetic).
+In k8s book they took a reverse approach (simple to complex vs synthetic).
 
-
+[Next steps](./volume4question.md)
