@@ -1,6 +1,6 @@
 # Some questions I have on volume
  
-## 1. emptyDir and pvc 
+## 1 emptyDir and pvc 
 
 hostpath [here](./go-further.md#Can-I-use-hostPath-directly-without-pv-and-pvc-?)
 is at same level as persistentVolumeClaim, emptyDir (would be true for nfs)
@@ -33,7 +33,7 @@ So not ConfigMap, emptyDir!
 Emptydir keep storage only while pod is alive
 
 
-## 2. Volume reclaim policy
+## 2 Volume reclaim policy
 
 
 Given: https://kubernetes.io/docs/concepts/storage/persistent-volumes/#storage-object-in-use-protection
@@ -250,7 +250,7 @@ Test1: persistentVolumeReclaimPolicy: Retain and <not delete the pv, but delete 
 I expect a new pv, and old pv kept! [NOT TESTED and will not :)]
 
 
-## 4. ConfigMap consumption
+## 4 ConfigMap consumption
 
 `ConfigMap` (also `secret`) can be consumed as:
 

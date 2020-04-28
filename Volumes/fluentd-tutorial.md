@@ -403,7 +403,7 @@ Sometime we consume `ConfigMap`/`Secret` as a volume and have an environment var
 Note that when we consume a `ConfigMap`/`Secret` has en environment var, if `ConfigMap`/`Secret` is updated. This wil need the pod to restart to be updated.
 Unlike volume. However there is a sync delay as explained in the [doc](https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#mounted-configmaps-are-updated-automatically).
 
-We summarize other usage of `configMap`/`Secret` in this [question](./volume4question.md#4.-ConfigMap-consumption)
+We summarize other usage of `configMap`/`Secret` in this [question](./volume4question.md#4-ConfigMap-consumption)
 
 ### In the example
 We have a single hostPath `pv`, declared in pod template and mounted in nginx and fluentd containers
