@@ -131,7 +131,7 @@ vagrant@k8sMaster:~$ k describe po | grep FailedScheduling
 ````
 
 It was due to an error on `insecureCertificate` script (CR/LF).
-See [fix line separator issue](../FixLineSpeparatorIssue.md).
+See [fix line separator issue](../fix-line-speparator-issue.md).
 So I run the script again, delete the calico pod and it worked
 
 ````buildoutcfg
