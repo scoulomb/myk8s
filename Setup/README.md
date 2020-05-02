@@ -22,10 +22,11 @@ Following VM This VM are depoyed using Vagrant and based on Ubuntu.
 Alternatively we can configure Archlinux DEV VM with minikube.
 This is explained in this [document](./archlinux-dev-vm-with-minikube.md).
 
+## Registry setup
 
+For registry we can:
+- Deploy a local registry (done in [clusterSetup](./ClusterSetup))
+- Use Dockerhub (not tested) or corporate registry...
+- But it can be bypassed if using `image pull policy` set to `never` and build the image on the node.
 
-- Note: For registry we can:
-    - Deploy a local registry 
-    - Use Dockerhub (not tested) or corporate registry...
-    - But it can be bypassed if using `image pull policy` set to `never` and build the image on the node.
-    - Example can be found in [Security section](./Security/0-capabilities-bis-part1-basic.md).
+Example can be found in [Security section](./../Security/0-capabilities-bis-part1-basic.md) and matching section in private folder.
