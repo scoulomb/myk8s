@@ -430,6 +430,6 @@ So run is now reserved to pod creation.
 - What is the default restart policy when using this specific command?
 - What happens to a deployment if restartPolicy=Never or Always?
 
-See [next-section](1-kubectl-create-explained.md)
+See [next-section](1-kubectl-create-explained-derived-from-pod.md)
 
 [OK CCL]
