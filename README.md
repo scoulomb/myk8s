@@ -13,3 +13,4 @@ Here are covered topics:
     - [Secret](./Security/1-secret-creation-consumption.md)
     - [Service account](./Security/2-service-account.md)
     - [Network policy](./Security/3-1-network-policy-NoPolicy.md)
+- [Master Kubectl](./Master-Kubectl/0-kubectl-run-explained.md)
