@@ -14,7 +14,7 @@ Prepare Windows to host VM
 
 ## Cluster setup
 
-Following VM This VM are depoyed using Vagrant and based on Ubuntu.
+This VM are depoyed using Vagrant and based on Ubuntu.
 
 - [Real cluster setup](./Setup/ClusterSetup/README.md) with `kubeadm`
 - Or with [Minikube](./Setup/MinikubeSetup/README.md)
