@@ -189,7 +189,7 @@ we need to be sudo (unlike Docker where we can not)
 💣  Sorry, Kubernetes v1.18.0 requires conntrack to be installed in root's path
 ````
 
-Here is the packageL https://www.archlinux.org/packages/extra/x86_64/conntrack-tools/
+Here is the package https://www.archlinux.org/packages/extra/x86_64/conntrack-tools/
  
 
 ```` 
@@ -292,9 +292,9 @@ end' >  ~/.config/fish/functions/kgpo.fish
 
 ##### Auto-completion
 
-I will use the [`kubectl.fish`](https://gist.github.com/terlar/28e1c2e4ac9a27be7a5950306bf45ab2)
+I will use the [`kubectl.fish`](https://gist.github.com/terlar/28e1c2e4ac9a27be7a5950306bf45ab2).
 And copy it here `~/.config/fish/functions/kubectl.fish`
-
+Script is stored [here](./kubectl.fish).
 
 ##### Aliasing
 

@@ -20,7 +20,7 @@ This VM are depoyed using Vagrant and based on Ubuntu.
 - Or with [Minikube](./Setup/MinikubeSetup/README.md)
 
 Alternatively we can configure Archlinux DEV VM with minikube.
-This is explained in this [document](./archlinux-dev-vm-with-minikube.md).
+This is explained in this [document](ArchDevVM/archlinux-dev-vm-with-minikube.md).
 
 ## Registry setup
 
