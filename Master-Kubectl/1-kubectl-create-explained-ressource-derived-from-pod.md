@@ -34,8 +34,10 @@ status: {}
 ````
 
 </p>
-</details>details>
+</details>
 
+We can see that this created in the manifest the `spec.containers.args` with `/bin/sleep` and `10`.
+Also, YAML syntax can confuse but args is at same level as image.
 
 ## Create Job
 
@@ -70,61 +72,167 @@ spec:
 status: {}
 ````
 
-### Note
+</p>
+</details>
 
-`args` becamme `command`.
+We can see that this created in the manifest the `spec.containers.command` with `/bin/sleep` and `10`.
+
+
+## Note on args and command
+
+### What is it?
 
 Cf. https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/
-Also command corresponds to `entrypoint` in docker.
 > Note: The command field corresponds to entrypoint in some container runtimes. Refer to the Notes below.
 
-Checking `kubectl run/create job` doc:
+Thus:
+- Docker `ENTRYPOINT` <=>  k8s `command` 
+- Docker `CMD` <=> k8s `args`
+
+It is clearly documented here: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#notes
+`ENTRYPOINT` and `CMD` can be defined in image and overriding is documented in same doc.
+
+In Docker CLI it is also possible to oveeride docker `ENTRYPOINY` and `CMD`:
+
 ````commandline
+docker run --entrypoint "/bin/sleep"  alpine 5
+````
+And as stated in this [medium article](https://medium.com/@oprearocks/how-to-properly-override-the-entrypoint-using-docker-run-2e081e5feb9d)
+> There is something a bit counter-intuitive here and if you take a good look at the example commands on the documentation page, you’ll see that the arguments are being passed after the image name.
+
+### Discrepancy between `k run` and `k create`
+
+- When using `k run` it created `args`
+- When using `k create` it created `command`.
+
+Checking `kubectl run -h`:
+
+````commandline
+      --command=false: If true and extra arguments are present, use them as the 'command' field in the container, rather
+than the 'args' field which is the default.
+
 Usage:
   kubectl run NAME --image=image [--env="key=value"] [--port=port] [--dry-run=server|client] [--overrides=inline-json]
 [--command] -- [COMMAND] [args...] [options]
+````
 
+And `kubectl create job -h`:
+````commandline
 Usage:
   kubectl create job NAME --image=image [--from=cronjob/name] -- [COMMAND] [args...] [flags] [options]
 ````
 
-So:
+As a conclusion 
+
 - create a pod with args (initial case)
 ````commandline
 k run alpine --image alpine --dry-run=client -o yaml -- /bin/sleep 10
 ````
-- creates a pod with a command
-````commandline
-k run alpine --image alpine --dry-run=client -o yaml --command /bin/sleep 10
-````
-- creates a pod with a command and args 
-````commandline
-k run alpine --image alpine --dry-run=client -o yaml --command /bin/sleep -- args 10
+
+- But we can a create pod with command using `--command`
+
+````commandlin
+k run alpine --image alpine --dry-run=client -o yaml --command /bin/sleep -- 10
 ````
 
-Whereas  
+<details><summary>output</summary>
+<p>
+
+````commandline
+➤ k run alpine --image alpine --dry-run=client -o yaml --command /bin/sleep -- 10                                                                                             vagrant@archlinux
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: alpine
+  name: alpine
+spec:
+  containers:
+  - command:
+    - /bin/sleep
+    - "10"
+    image: alpine
+    name: alpine
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+````
+
+What is after `--` become also command and not args. If doing `--args` it will not create args!
+
+</p>
+</details>
+
+We can not mix command and args with kubectl.
+
+
 - create a job with command (initial case)
 ````commandline
 k create job alpine-job --image alpine --dry-run=client -o yaml -- /bin/sleep 10 
 ````
-- create a job with a command args
-````commandline
-k create job alpine-job --image alpine --dry-run=client -o yaml -- /bin/sleep args 10
-````       
 
-Given `create a pod with args (initial case)`, what we give after is always an args.
-Thus it should be in CLI doc? [TOFIX]
+I can only generate `command` with `kubectl create job`, not args.
+
+Note I can  create job with command and args with `k create -f`
 
 ````commandline
-  kubectl run NAME --image=image [--env="key=value"] [--port=port] [--dry-run=server|client] [--overrides=inline-json]
-[--command] -- [ARGS] [options]
+echo '
+apiVersion: batch/v1
+kind: Job
+metadata:
+  creationTimestamp: null
+  name: alpine-job
+spec:
+  template:
+    metadata:
+      creationTimestamp: null
+    spec:
+      containers:
+      - command:
+        - /bin/sleep
+        args:
+        - "10"
+        image: alpine
+        name: alpine-job
+        resources: {}
+      restartPolicy: Never' > job_with_command_args.yaml
+
+k create -f job_with_command_args.yaml
 ````
 
-Also:
-Yaml syntax can confuse but command is at same level as image.
+<details><summary>output</summary>
+<p>
 
-</p>
-</details>
+````commandline
+➤ k create -f job_with_command_args.yaml
+job.batch/alpine-job created
+[21:19] ~
+➤ k get jobs                        vagrant@archlinuxNAME         COMPLETIONS   DURATION   AGE
+alpine-job   0/1           4s         4s
+[21:19] ~
+➤ k get pods                        vagrant@archlinuxNAME               READY   STATUS    RESTARTS   AGE
+alpine-job-9gd5m   1/1     Running   0          10s
+[21:19] ~
+➤ k get pods                        vagrant@archlinuxNAME               READY   STATUS      RESTARTS   AGEalpine-job-9gd5m   0/1     Completed   0          28s[21:19] ~
+➤ k get jobs                        vagrant@archlinuxNAME         COMPLETIONS   DURATION   AGE
+alpine-job   1/1           14s        46s
+[21:19] ~
+````
+
+<details><summary>output</summary>
+<p>
+
+I found  `[COMMAND] [args...]` in doc confusing because I would expect:
+- `[COMMAND]` to match k8s manifest `spec.containers.command`,
+- `[args]` to match k8s manifest `spec.containers.args`
+And it is actually
+- `[COMMAND]` seems to match k8s manifest `spec.containers.command[0]`
+- `[args]` seems to match k8s manifest `spec.containers.command[1..N]`
+
+For pod several interpretations are possible.
+
 
 ## Create a CronJob
 
@@ -212,12 +320,12 @@ alpine-cronjob-1588443900-xjmk5      0/1     ContainerCreating   0          4s
 ````
 
 </p>
-</details>details>
+</details>
 
 ## Create a replica set
 
-It is not possible to create a replicaset through `kubectl create`.
-So have to use `kubectl create -f`, where file provided is any manifest.
+It is not possible to create a `replicaset` through `kubectl create`.
+So have to use `kubectl create -f`, where a file provided as any manifest.
 
 From this [doc](https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/) I will create a `rs` manifest.
 
@@ -278,7 +386,7 @@ If I create manually a pod with label: `app: rssample`
 k run alpine-manual --image alpine  --labels="app=rssample" -- /bin/sleep 60
 ````
 
-it is immediatly terminated
+it is terminated
 
 ````commandline
 ➤ k run alpine-manual --image alpine  --labels="app=rssample" -- /bin/sleep 60                                                                                                vagrant@archlinux
@@ -309,7 +417,7 @@ k create deployment alpine-deployment --image=alpine --dry-run=client -o yaml
 ````
 
 We can not give a command directly and `-- /bin/sleep 3600`, is ignored.
-When looking at `k create deployment -h` and `k create job -h`, we see it is expected.
+When looking at `k create deployment -h` and `k create job -h`, we see it is expected. Deployment does not take a `command` or `args` directly (it can take template).
 
 <details><summary>output</summary>
 <p>
@@ -343,9 +451,9 @@ status: {}
 ````
 
 </p>
-</details>details>
+</details>
 
-Note `--replicas` does not exist and will remove the `dry-run`. We can use `k scale`.
+Note `--replicas` does not exist. We can use `k scale`.
 
 Using it 
 
@@ -366,9 +474,14 @@ NAME                                 READY   STATUS             RESTARTS   AGE
 alpine-deployment-585dcccf5b-f9h4z   0/1     CrashLoopBackOff   1          22s
 ````
 
-It is in `CrashLoopBackOff` because there is no sleep.
+It is in `CrashLoopBackOff` because alpine has probably define a short command.
+Thus is not "Always" running. 
+We will study this in [next section](1-kubectl-create-explained-ressource-derived-from-pod-appendices.md#Explanation-why-we-have-CrashLoppBackOff)
 
-Adding a sleep:
+Adding a sleep will avoid the `CrashLoopBackOff` until it ends !
+
+<details><summary>output</summary>
+<p>
 
 ````commandline
 k delete deployment alpine-deployment 
@@ -399,7 +512,7 @@ spec:
         name: alpine
         command:
         - /bin/sleep
-        - "3600"
+        - "25"
         resources: {}
 status: {}' > alpine-deployment.yaml
 k create -f alpine-deployment.yaml
@@ -408,25 +521,36 @@ k create -f alpine-deployment.yaml
 Output is
 
 ````commandline
-➤ k create -f alpine-deployment.yaml                                                                                                                                          vagrant@archlinux
-deployment.apps/alpine-deployment created
-[17:44] ~
-➤ k get deployments                                                                                                                                                           vagrant@archlinux
-NAME                READY   UP-TO-DATE   AVAILABLE   AGE
-alpine-deployment   3/3     3            3           17s
-[17:44] ~
-➤ k get rs                                                                                                                                                                    vagrant@archlinux
-NAME                           DESIRED   CURRENT   READY   AGE
-alpine-deployment-5d556b4864   3         3         3       21s
-[17:44] ~
-➤ k get pods                                                                                                                                                                  vagrant@archlinux
-NAME                                 READY   STATUS    RESTARTS   AGE
-alpine-deployment-5d556b4864-fvhz6   1/1     Running   0          24s
-alpine-deployment-5d556b4864-jdbvp   1/1     Running   0          24s
-alpine-deployment-5d556b4864-xzg9p   1/1     Running   0          24s
+[23:10] ~
+➤ k get deployments                                                                                                                                                           vagrant@archlinuxNAME                READY   UP-TO-DATE   AVAILABLE   AGE
+alpine-deployment   3/3     3            3           21s
+[23:10] ~
+➤ k get rs                                                                                                                                                                    vagrant@archlinuxNAME                           DESIRED   CURRENT   READY   AGE
+alpine-deployment-7cfd9f6756   3         3         3       27s
+[23:10] ~
+➤ k get pods                                                                                                                                                                  vagrant@archlinuxNAME                                 READY   STATUS    RESTARTS   AGE
+alpine-deployment-7cfd9f6756-8r64g   1/1     Running   0          31s
+alpine-deployment-7cfd9f6756-hmb92   1/1     Running   0          31s
+alpine-deployment-7cfd9f6756-xkxck   1/1     Running   0          31s
+[23:10] ~
+➤ k get pods                                                                                                                                                                  vagrant@archlinuxNAME                                 READY   STATUS    RESTARTS   AGE
+alpine-deployment-7cfd9f6756-8r64g   1/1     Running   1          42s
+alpine-deployment-7cfd9f6756-hmb92   1/1     Running   1          42s
+alpine-deployment-7cfd9f6756-xkxck   1/1     Running   1          42s
+[23:10] ~
+➤                                                                                                                                                                             vagrant@archlinux[23:11] ~
+➤ k get pods                                                                                                                                                                  vagrant@archlinuxNAME                                 READY   STATUS             RESTARTS   AGE
+alpine-deployment-7cfd9f6756-8r64g   0/1     CrashLoopBackOff   1          73s
+alpine-deployment-7cfd9f6756-hmb92   0/1     Completed          1          73s
+alpine-deployment-7cfd9f6756-xkxck   0/1     Completed          1          73s
+[23:11] ~
+➤ k get pods                                                                                                                                                                  vagrant@archlinuxNAME                                 READY   STATUS    RESTARTS   AGE
+alpine-deployment-7cfd9f6756-8r64g   1/1     Running   2          91s
+alpine-deployment-7cfd9f6756-hmb92   1/1     Running   2          91s
+alpine-deployment-7cfd9f6756-xkxck   1/1     Running   2          91s
+[23:11] ~
 ````
 Notice generated naming cascading.
 
-
-
-
+</p>
+</details>

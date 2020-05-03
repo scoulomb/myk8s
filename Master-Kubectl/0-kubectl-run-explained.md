@@ -421,6 +421,7 @@ From: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-life
 
 Which explained the default generator choice in `1.17`
 
+Next section [here](1-kubectl-create-explained-ressource-derived-from-pod.md) provides more details on this.
 
 ## Next steps 
 
@@ -430,6 +431,6 @@ So run is now reserved to pod creation.
 - What is the default restart policy when using this specific command?
 - What happens to a deployment if restartPolicy=Never or Always?
 
-See [next-section](1-kubectl-create-explained-derived-from-pod.md)
+See [next-section](1-kubectl-create-explained-ressource-derived-from-pod.md)
 
 [OK CCL]
