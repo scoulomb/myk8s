@@ -540,14 +540,20 @@ Note on `/bin/true` and `/bin/false`:
 Where we can see clearly return code.
 
 ````commandline
-[10:54] ~
-➤ /bin/true 10                                                                                                                                                                vagrant@archlinux[10:54] ~
-➤ echo $status                                                                                                                                                                vagrant@archlinux0
-[10:54] ~
-➤ /bin/false 10                                                                                                                                                               vagrant@archlinux[10:54] ~
-➤ echo $status    
+[13:24] ~
+➤ /bin/true 10                                                                                                                                                                vagrant@archlinux
+[13:24] ~
+➤ echo $status                                                                                                                                                                vagrant@archlinux
+0
+[13:25] ~
+➤ /bin/false 10                                                                                                                                                               vagrant@archlinux
+[13:25] ~
+➤ echo $status                                                                                                                                                                vagrant@archlinux
+1
 ````
-                                                                                                                                                            vagrant@archlinux1
+
+Arguments have no effect. 0 is a successful exit code. 
+
 ## Wrap up
 
 In first part [here](0-kubectl-run-explained.md#What-is-actually-the-restart-policy).
