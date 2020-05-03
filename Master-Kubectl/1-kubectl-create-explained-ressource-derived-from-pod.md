@@ -1,8 +1,10 @@
-# Create ressources deriving from a pod 
+[previous-section](0-kubectl-run-explained.md)
+
+# Create resources deriving from a pod 
 
 ## Create pod 
 
-Cf. [kubectl create explained](./0-kubectl-run-explained.md)
+Cf. [kubectl run explained](./0-kubectl-run-explained.md)
 
 ````commandline
 k run alpine --image alpine --dry-run=client -o yaml -- /bin/sleep 10
@@ -32,11 +34,12 @@ spec:
   restartPolicy: Always
 status: {}
 ````
+Tips: when copy/pasting from terminal grab area
 
 </p>
 </details>
 
-We can see that this created in the manifest the `spec.containers.args` with `/bin/sleep` and `10`.
+We can see that this created in the manifest the `spec.containers.args` field with `/bin/sleep` and `10`.
 Also, YAML syntax can confuse but args is at same level as image.
 
 ## Create Job
@@ -48,7 +51,6 @@ k create job alpine-job --image alpine --dry-run=client -o yaml -- /bin/sleep 10
 <details><summary>output</summary>
 <p>
 
-Tips: when copy/pasting ressource select area
 ````commandline
 k create job alpine-job --image alpine --dry-run=client -o yaml -- /bin/sleep 10                                                                                            vagrant@archlinux
 apiVersion: batch/v1
@@ -75,7 +77,7 @@ status: {}
 </p>
 </details>
 
-We can see that this created in the manifest the `spec.containers.command` with `/bin/sleep` and `10`.
+We can see that this created in the manifest the `spec.containers.command` field with `/bin/sleep` and `10`.
 
 
 ## Note on args and command
@@ -89,8 +91,24 @@ Thus:
 - Docker `ENTRYPOINT` <=>  k8s `command` 
 - Docker `CMD` <=> k8s `args`
 
-It is clearly documented here: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#notes
-`ENTRYPOINT` and `CMD` can be defined in image and overriding is documented in same doc.
+`ENTRYPOINT` and `CMD` can be defined in image and be overridden by k8s.
+It is clearly documented here in [k8s documentation](https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#notes).
+
+````xhtml
+> This table summarizes the field names used by Docker and Kubernetes.
+> 
+> Description	                        Docker field name	     Kubernetes field name
+> The command run by the container	    Entrypoint	             command
+> The arguments passed to the command	Cmd	                     args
+> 
+> When you override the default Entrypoint and Cmd, these rules apply:
+> 
+> If you do not supply command or args for a Container, the defaults defined in the Docker image are used.
+> If you supply a command but no args for a Container, only the supplied command is used. The default EntryPoint and the default Cmd defined in the Docker image are ignored.
+> If you supply only args for a Container, the default Entrypoint defined in the Docker image is run with the args that you supplied.
+> If you supply a command and args, the default Entrypoint and the default Cmd defined in the Docker image are ignored. Your command is run with your args.
+
+````
 
 In Docker CLI it is also possible to oveeride docker `ENTRYPOINY` and `CMD`:
 
@@ -221,8 +239,8 @@ alpine-job   1/1           14s        46s
 [21:19] ~
 ````
 
-<details><summary>output</summary>
-<p>
+</details>
+</p>
 
 I found  `[COMMAND] [args...]` in doc confusing because I would expect:
 - `[COMMAND]` to match k8s manifest `spec.containers.command`,
@@ -233,11 +251,9 @@ And it is actually
 
 For pod several interpretations are possible.
 
-
 ## Create a CronJob
 
-Cron synthax; http://www.nncron.ru/help/EN/working/cron-format.htm
-
+Cron synthax [reminder](http://www.nncron.ru/help/EN/working/cron-format.htm).
 ````commandline
 k create cronjob alpine-cronjob --image alpine  --schedule="* * * * *" --dry-run=client -o yaml -- /bin/sleep 30 
 ````
@@ -386,7 +402,7 @@ If I create manually a pod with label: `app: rssample`
 k run alpine-manual --image alpine  --labels="app=rssample" -- /bin/sleep 60
 ````
 
-it is terminated
+it is terminated as it is "captured" by the `replicaset`.
 
 ````commandline
 ➤ k run alpine-manual --image alpine  --labels="app=rssample" -- /bin/sleep 60                                                                                                vagrant@archlinux
@@ -408,7 +424,7 @@ Replicaset replaces ReplicationController.
 From: https://kubernetes.io/docs/concepts/workloads/controllers/replicationcontroller/
 > Note: A Deployment that configures a ReplicaSet is now the recommended way to set up replication.
 
-Note OpenShift `dc` creates a `rc`.
+Note OpenShift `DeploymentConfig`creates a `ReplicationController`.
 
 ## Create deployment 
 
@@ -478,7 +494,7 @@ It is in `CrashLoopBackOff` because alpine has probably define a short command.
 Thus is not "Always" running. 
 We will study this in [next section](2-kubectl-create-explained-ressource-derived-from-pod-appendices.md#Explanation-why-we-have-CrashLoppBackOff)
 
-Adding a sleep will avoid the `CrashLoopBackOff` until it ends !
+Adding a sleep will avoid the `CrashLoopBackOff` until sleep ends !
 
 <details><summary>output</summary>
 <p>
@@ -554,3 +570,6 @@ Notice generated naming cascading.
 
 </p>
 </details>
+
+[next section](2-kubectl-create-explained-ressource-derived-from-pod-appendices.md#Explanation-why-we-have-CrashLoppBackOff)
+ 
