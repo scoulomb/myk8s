@@ -476,7 +476,7 @@ alpine-deployment-585dcccf5b-f9h4z   0/1     CrashLoopBackOff   1          22s
 
 It is in `CrashLoopBackOff` because alpine has probably define a short command.
 Thus is not "Always" running. 
-We will study this in [next section](1-kubectl-create-explained-ressource-derived-from-pod-appendices.md#Explanation-why-we-have-CrashLoppBackOff)
+We will study this in [next section](2-kubectl-create-explained-ressource-derived-from-pod-appendices.md#Explanation-why-we-have-CrashLoppBackOff)
 
 Adding a sleep will avoid the `CrashLoopBackOff` until it ends !
 

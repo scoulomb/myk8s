@@ -4,7 +4,7 @@
 
 ### Command is /bin/false
 
-<details><summary>Manifest</summary>
+<details><summary>Manifest from deployment section</summary>
 <p>
 
 ````commandline
@@ -122,7 +122,7 @@ If we repeat same experience with successful and failed job:
 
 ## Case of Job
 
-<details><summary>Manifest</summary>
+<details><summary>Manifest from Job section</summary>
 <p>
 
 ````commandline
@@ -288,6 +288,10 @@ So only always is accepted explaining why it does not appear in generated yaml.
 
 Then taking the job from [create cron job section](#create-cron-job) and change restart Policy to always.
 
+
+<details><summary>Manifest</summary>
+<p>
+
 ````commandline
 echo '
 --- 
@@ -319,6 +323,9 @@ spec:
 k create -f cron_job_restartPolicy
 
 ````
+
+</p>
+</details>
 
 And ouput is 
 
