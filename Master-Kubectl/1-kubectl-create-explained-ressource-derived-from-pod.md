@@ -42,6 +42,15 @@ Tips: when copy/pasting from terminal grab area
 We can see that this created in the manifest the `spec.containers.args` field with `/bin/sleep` and `10`.
 Also, YAML syntax can confuse but args is at same level as image.
 
+This is the way to do  from `1.18`, prior it will create a deployment as shown in previous step,
+To create a pod do (removing client arg from dry-run):
+
+````buildoutcfg
+sudo kubectl run alpine --image alpine --restart=Never --dry-run -o yaml -- /bin/sleep 10 
+````
+
+Next of the section was tested with `1.18` but except removal of `dry-run` argument no change is expected in older version.
+
 ## Create Job
 
 ````commandline

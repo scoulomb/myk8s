@@ -12,6 +12,11 @@ Prepare Windows to host VM
 5. Install conemu https://conemu.github.io/en/Downloads.html,
 6. Install git (select lf for line separator, cf. issue [here](./fix-line-speparator-issue.md)),
 
+*Note*: Git is needed to clone DEV VM and for repo which are not in the Vagrant sync path. More [git details](../Repo-mgmt/repo-mgmt.md).
+You can copy this [`gitconfig`](https://github.com/scoulomb/dev_vm/blob/custom/saltstack/salt/common/git/gitconfig) made in [ArchDevVM](./ArchDevVM/archlinux-dev-vm-with-minikube.md) using RAW: 
+`curl --insecure https://raw.githubusercontent.com/scoulomb/dev_vm/custom/saltstack/salt/common/git/gitconfig?token=$TOKEN > ~/.gitconfig`
+You may have to comment `diff-so-fancy`.
+
 ## Cluster setup
 
 This VM are depoyed using Vagrant and based on Ubuntu.

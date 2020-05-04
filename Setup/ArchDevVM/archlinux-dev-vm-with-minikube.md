@@ -2,42 +2,89 @@
 
 ## Deploy Guest Archlinux VM with Vagrant 
 
-1. Dev VM : https://github.com/scoulomb/dev_vm?organization=scoulomb&organization=scoulomb
-    - Clone dev_vm into dev directory in $HOME windows
-    - change hashicop insecure curl
-    - change git config 
-    - In vagrantfile: change vagrant $USER in sync folder, adapt CPU and RAM, eventually add port fw (1313 for kubedoc)
-    - `$USER` in fish function
-2. restart machine and ensure connected to internet
-3. `vagrant up; vagrant ssh`
+1. In `C:\HashiCorp\Vagrant\embedded\gems\2.2.7\gems\vagrant-2.2.7\plugins\provisioners\salt\bootstrap-salt.sh`. 
+Add `--insecure` to curl. Restart machine and ensure connected to internet.
+2. Dev VM available [here](https://github.com/scoulomb/dev_vm?organization=scoulomb&organization=scoulomb) (use your own fork).
+    - Clone dev_vm into dev directory in windows `HOME/dev` (`C:\Users\$USER\dev`) using git bash:
+        - `mkdir dev`
+        - `git clone https://github.com/scoulomb/dev_vm.git`
+    - Make modifications in DEV VM repo:
+        * `cd dev_vm`
+        * `./sync_fork.sh` to sync with central
+        * In `vagrantfile`: 
+            * Change vagrant `$USER` in sync folder
+            * Eventually adapt CPU and RAM,and port forwarding (`1313` for kubedoc)
+        * In  `saltstack/salt/common/git/gitconfig`: Change username and mail, and editor
+        * In `saltstack/salt/common/fish/fish_variables`: Change user variable and potentially `KUBE_EDITOR` and `EDITOR`
+    - You can keep your custom change in a [custom branch](https://github.com/scoulomb/dev_vm/tree/custom):
+    `git checkout -b custom; git add --all;  git ci -m "Custom"; git push --set-upstream origin custom`
+    Then do `git co master`, `./sync_fork.sh` and `git co custom; git rebase master`.
+    
+3. Start the VM: `vagrant up; vagrant ssh`
 
-You could have some package download error:
+You could have some package (download) error. 
+In that case re-run the provisioner:
 
+## Start/Delete Minikube
+
+````buildoutcfg
+sudo minikube start --vm-driver=none
+sudo minikube delete
 ````
-          ID: common_packages
-    Function: pkg.installed
-        Name: git
-      Result: False
-     Comment: Problem encountered installing package(s). Additional info follows:
-	[...]
-                error: failed retrieving file 'git-2.25.1-1-x86_64.pkg.tar.zst' from mirror.reisenbauer.ee : The requested URL returned error: 404
-                    error: failed retrieving file 'git-2.25.1-1-x86_64.pkg.tar.zst' from mirror.reisenbauer.ee : The requested URL returned error: 404
+ 
+For deletion to work you may have to `sudo chmod 770 /tmp`.
+If error (like certificate), delete minikube et start it again.
 
--------------
-Succeeded: 23 (changed=22)
-Failed:     1
--------------
-Total states run:     24
-Total run time: 1437.082 s
+Run a pod:
+
+````buildoutcfg
+[22:27] ~
+➤ k run alpine --image alpine --restart=Never -- /bin/sleep 10                                                                                                                vagrant@archlinux
+pod/alpine created
+[22:27] ~
+➤ k get pods                                                                                                                                                                  vagrant@archlinux
+NAME     READY   STATUS    RESTARTS   AGE
+alpine   1/1     Running   0          9s                                                                                                                                                                            vagrant@archlinux
 ````
 
+*Note*:
+This does not install last version of Kubectl. 
+It installs `1.14` whereas in exploration below it was `1.18`.
+This impacts (Both tested):
+- [Kubectl run](../../Master-Kubectl/0-kubectl-run-explained.md) and [appendices](../../Master-Kubectl/1-kubectl-create-explained-ressource-derived-from-pod.md).
+- [Security psp extensions](../../Security/0-capabilities-bis-part3-psp-tutorial.md#create-role)
 
-## Setup Kubernetes on this dev machine  
+Even if [Kubectl](https://www.archlinux.org/packages/community/x86_64/kubectl/) `1.18` is availabe.
+The VM image we are using does not use it because it an older snapshot.
+A new snapshot was requested [here](https://github.com/archlinux/arch-boxes/issues/100).
+We faced some issues when using it.
+
+## Misc
+
+### DNS issue 
+
+For instance when doing `oc login` on external PAAS.
+Do `sudo systemd-resolve --flush-caches`
+
+### Minikube start in provisioning
+
+For download. Excluded as not always needed but possible as done for `oc` download. 
+
+<details><summary>Minikube manual setup and exploration</summary>
+<p>
+
+## Setup Kubernetes on this dev machine - Manual and deprecated procedure  
+
+This setup is now automated and simplified in VM provision.
+See https://github.com/Jiehong/dev_vm/pull/1 (and comments in vim and editor, when unset default is vi for k8s (k edit) and vim for git (commit window)).
+
+
 
 ### Setup yaourt package manager
 
-Aura is already there but all tuto I found for minikube are with yaourt!
-
+I realized later that Aura is already there but all tuto I found for minikube are with yaourt!
+Moreover Minikube is in community. It is possible to install it as well as other package with `Pacman -s`
+So we did this in provisioner.
 Follow this tuto: https://cloudcone.com/docs/article/install-packages-in-arch-linux-from-aur/ (Section > "install yaout using AUR")
 
 ````
@@ -81,10 +128,8 @@ If error re-run the command, conflcit with existing ERASE (kubectl, docker alrea
 
 ### Trying minkube (and the different driver)
 
-<details><summary>show all drivers</summary>
-<p>
-
 #### kvm driver [Not working]
+
 when launching minikube driver error with kvm because of nested virtulization
 https://github.com/minishift/minishift/issues/3075
 Thus previous install could have been simplfied 
@@ -95,6 +140,7 @@ so use docker driver
 
 and magic happens 
 https://minikube.sigs.k8s.io/docs/drivers/docker/
+
 ````
 ➤ minikube start --driver=docker                                                                                                                                              vagrant@archlinux😄  minikube v1.9.2 on Arch  (vbox/amd64)
 ✨  Using the docker driver based on user configuration
@@ -137,6 +183,7 @@ Digest: sha256:86ae264c3f4acb99b2dee4d0098c40cb8c46dcf9e1148f05d3a51c4df6758c12
 Status: Downloaded newer image for nginx:latest
 docker.io/library/nginx:latest
 ````
+
 We can try to  use `--insecure-registry` flag but it seems there is some issue with it 
 
 ````
@@ -162,6 +209,7 @@ nginxwkkfffk   0/1     ErrImagePull   0          5s
 [00:47] ~
 ➤
 ````
+
 Still error
 
 Issue with this flag:
@@ -171,9 +219,6 @@ Issue with this flag:
 I could pull policy in local but not convnient 
 
 strategy change
-
-</p>
-</details>
 
 ####  Use bare metal - None driver
 
@@ -293,8 +338,7 @@ end' >  ~/.config/fish/functions/kgpo.fish
 ##### Auto-completion
 
 I will use the [`kubectl.fish`](https://gist.github.com/terlar/28e1c2e4ac9a27be7a5950306bf45ab2).
-And copy it here `~/.config/fish/functions/kubectl.fish`
-Script is stored [here](./kubectl.fish).
+And copy it here `~/.config/fish/functions/kubectl.fish`.
 
 ##### Aliasing
 
@@ -347,8 +391,6 @@ jobs                      (Resource Type)  replicasets             (Resource Typ
 
 Autcompletion is working with aliasing
 
-For clean up may have to perform
-`sudo chmod 770 /tmp`.
 
-
-
+</p>
+</details>
