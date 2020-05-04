@@ -744,7 +744,8 @@ This OK
 
 
 
-SEC status:
+#### SEC status
+
 - Finished OK 18apr20
 - whitelist seems not working, 
 18apr: deny overrides fix .
@@ -755,6 +756,7 @@ FULL OK YES OK (voit mail 19apr)
 OK DONE
 - lien lfd ok
 ok
-- voir status section 0 -part 3 - Nothing to understand
+- voir status [Here](0-capabilities-bis-part3-psp-tutorial.md#status) - Nothing to understand
 more to contribute
+
 So sec completed

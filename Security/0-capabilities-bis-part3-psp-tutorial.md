@@ -204,7 +204,8 @@ Create the rolebinding to grant fake-user the use verb on the example policy:
 
 Note: This is not the recommended way! See the next section for the preferred approach.
 
-This will not work
+This will not work with the version of Kubectl used:
+
 ````buildoutcfg
 root@minikube:~# kubectl-admin create role psp:unprivileged \
 >     --verb=use \
@@ -213,13 +214,34 @@ root@minikube:~# kubectl-admin create role psp:unprivileged \
 e "psp:unprivileged" createderror: can not perform 'use' on 'podsecuritypolicies' in group 'policy'
 ````
 
-DISCREPANCY: we have to use instead `podsecuritypolicies.extensions`
+DISCREPANCY SOLVED: we have to use instead `podsecuritypolicies.extensions`
 
 ````buildoutcfg
 kubectl-admin create role psp:unprivileged \
   --verb=use \
   --resource=podsecuritypolicies.extensions \
   --resource-name=example
+````
+
+Note in last release, it is working with and without extensions:
+
+````buildoutcfg
+[14:51] ~
+➤ k create role psp:unprivileged \                                                                                                                                            vagrant@archlinux
+    --verb=use \
+    --resource=podsecuritypolicies \
+    --resource-name=example
+role.rbac.authorization.k8s.io/psp:unprivileged created
+[14:51] ~
+➤ k create role psp:unprivileged2 \                                                                                                                                           vagrant@archlinux
+    --verb=use \
+    --resource=podsecuritypolicies.extensions \
+    --resource-name=example
+role.rbac.authorization.k8s.io/psp:unprivileged2 created
+[14:52] ~
+➤ k version                                                                                                                                                                   vagrant@archlinux
+Client Version: version.Info{Major:"1", Minor:"18", GitVersion:"v1.18.2", GitCommit:"52c56ce7a8272c798dbc29846288d7cd9fbae032", GitTreeState:"clean", BuildDate:"2020-04-16T11:56:40Z", GoVersion:"go1.13.9", Compiler:"gc", Platform:"linux/amd64"}
+Server Version: version.Info{Major:"1", Minor:"18", GitVersion:"v1.18.0", GitCommit:"9e991415386e4cf155a24b1da15becaa390438d8", GitTreeState:"clean", BuildDate:"2020-03-25T14:50:46Z", GoVersion:"go1.13.8", Compiler:"gc", Platform:"linux/amd64"}
 ````
 
 #### Create role binding
