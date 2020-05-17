@@ -9,7 +9,7 @@ k delete clusterrole specific-cluster-role
 
 ## Default service account inspection
 
-Run [FINAL STEP] of [previous lab](./secret-creation-consumption.txt) 
+Run [FINAL STEP] of [previous lab](./1-secret-creation-consumption.md) 
 
 ### Listing secret
 

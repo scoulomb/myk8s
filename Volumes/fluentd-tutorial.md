@@ -404,6 +404,11 @@ Note that when we consume a `ConfigMap`/`Secret` has en environment var, if `Con
 Unlike volume. However there is a sync delay as explained in the [doc](https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#mounted-configmaps-are-updated-automatically).
 
 We summarize other usage of `configMap`/`Secret` in this [question](./volume4question.md#4-ConfigMap-consumption)
+We give more details of secret in security section in:
+- [secret creation/consumption](../Security/1-secret-creation-consumption.md)
+- [service account](../Security/2-service-account.md)
+
+We add some notes based on secret documentation [here](./secret-doc.md).
 
 ### In the example
 We have a single hostPath `pv`, declared in pod template and mounted in nginx and fluentd containers
