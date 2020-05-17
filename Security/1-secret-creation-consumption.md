@@ -23,7 +23,9 @@ data:
 k create -f database-secret.yaml
 ````
 
-## Then create a pod which consumes the secret as volume [FINAL STEP]
+## Then create a pod which consumes the secret as volume 
+
+[FINAL STEP]
 
 This was detailled here: https://github.com/scoulomb/myk8s/blob/master/Volumes/fluentd-tutorial.md#general
 

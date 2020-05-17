@@ -1,8 +1,11 @@
-# Secret concept doc 
+# Reference
+
+Doc referenced here:
 https://github.com/dgkanatsios/CKAD-exercises/blob/master/d.configuration.md#secrets
 
-https://kubernetes.io/docs/concepts/configuration/secret/
+# Secret concept doc 
 
+https://kubernetes.io/docs/concepts/configuration/secret/
 
 ## Overview
 
@@ -20,32 +23,44 @@ Pod is important to not includes controller case, other case are particular case
 
 > By the kubelet when pulling images for the Pod.
 
-otherwise algined
+otherwise aligned
 
 ## Create secret manually 
 
-generator assume as configmap genraator work only with files, not folder
+https://kubernetes.io/docs/concepts/configuration/secret/#creating-a-secret-manually
+
+As done in [Security section](../Security/1-secret-creation-consumption.md#Create-secret).
+
+Generator assume as configmap genraator work only with files, not folder
 (see ckad exo, file d)
 
-## Consumption as volume
+## Usage
 
-### Standard
+### 1 - Consumption as volume
 
-As seen here: https://github.com/scoulomb/myk8s/blob/master/Volumes/fluentd-tutorial.md
+#### Standard
+
+As seen in this [volume section](fluentd-tutorial.md).
+Or in [security section](../Security/1-secret-creation-consumption.md#Then-create-a-pod-which-consumes-the-secret-as-volume).
+)
 And documented here: https://kubernetes.io/docs/concepts/configuration/secret/#using-secrets
 
-### API credentials
+#### API credentials
+
 https://kubernetes.io/docs/concepts/configuration/secret/#service-accounts-automatically-create-and-attach-secrets-with-api-credentials
 > Kubernetes automatically creates secrets which contain credentials for accessing the API and automatically modifies your Pods to use this type of secret.
 
-Indeed we see it here:
-https://github.com/scoulomb/myk8s/blob/master/Security/2-service-account.md
+Indeed we see in [security section](../Security/2-service-account.md)
+with default and custom sa 
 
-## Consumption as environment variable
+And done here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#use-the-default-service-account-to-access-the-api-server
+and https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#use-multiple-service-accounts
+
+### 2 - consumption as environment variable
 
 https://kubernetes.io/docs/concepts/configuration/secret/#using-secrets-as-environment-variables
 
-## Image pull secret 
+### 3 - Image pull secret 
 
 https://kubernetes.io/docs/concepts/configuration/secret/#using-imagepullsecrets
 
@@ -53,7 +68,7 @@ https://kubernetes.io/docs/concepts/configuration/secret/#using-imagepullsecrets
 
 ### Atachment to service account 
 
-Similar to what is done with API credentials 
+Similar to what is done with [API credentials](#API-credentials) 
 https://kubernetes.io/docs/concepts/configuration/secret/#automatic-mounting-of-manually-created-secrets
 
 Thu service account exactly what when creates robotic user and login directly with it
@@ -70,12 +85,13 @@ Remove it in conversion
 https://www.rapidtables.com/convert/number/octal-to-decimal.html
 ==> OK
 
-## Auto mount
+## Sync 
 
 Subpath same as CM
 https://kubernetes.io/docs/concepts/configuration/secret/#mounted-secrets-are-updated-automatically
 
 ## Synthax
+
 https://kubernetes.io/docs/concepts/configuration/secret/#creating-a-secret-manually
 
 `|-` it is a json with a key and big string, json2yanl, json lint
@@ -106,7 +122,7 @@ Note the '' and not "" as otherwise interpreted in current shell
 I could have done env | grep
 
 
-
+````shell script
 ➤ kubectl exec -it envvars-multiple-secrets -- /bin/sh -c 'env | grep _USERNAME'
 DB_USERNAME=db-admin
 BACKEND_USERNAME=backend-admin
@@ -114,6 +130,7 @@ BACKEND_USERNAME=backend-admin
 ➤ kubectl exec -it envfrom-secret -- /bin/sh -c 'echo "username: $username\npassword: $password"'
 username: my-app
 password: 39528$vdg7Jb
+````
 
 All OK
 PR to improve output and 2 spaces in more
