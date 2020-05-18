@@ -50,11 +50,9 @@ And documented here: https://kubernetes.io/docs/concepts/configuration/secret/#u
 https://kubernetes.io/docs/concepts/configuration/secret/#service-accounts-automatically-create-and-attach-secrets-with-api-credentials
 > Kubernetes automatically creates secrets which contain credentials for accessing the API and automatically modifies your Pods to use this type of secret.
 
-Indeed we see in [security section](../Security/2-service-account.md)
-with default and custom sa 
-
-And done here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#use-the-default-service-account-to-access-the-api-server
-and https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#use-multiple-service-accounts
+Indeed we see in [security section](../Security/2-service-account.md) with:
+- [default sa](../Security/2-service-account.md#Default-service-account-inspection) 
+- [custom sa](../Security/2-service-account.md#Use-a-specific-service-account) 
 
 ### 2 - consumption as environment variable
 
@@ -66,16 +64,20 @@ https://kubernetes.io/docs/concepts/configuration/secret/#using-imagepullsecrets
 
 ## Injection 
 
+Detailed in security [section](../Security/2-service-account.md#Link-secret-to-service-account)
+
+### Pod preset
+
+For manually created secret:
+https://kubernetes.io/docs/concepts/configuration/secret/#automatic-mounting-of-manually-created-secrets
+
 ### Atachment to service account 
 
 Similar to what is done with [API credentials](#API-credentials) 
 https://kubernetes.io/docs/concepts/configuration/secret/#automatic-mounting-of-manually-created-secrets
 
-Thu service account exactly what when creates robotic user and login directly with it
-
-### Pod preset
-
-https://kubernetes.io/docs/concepts/configuration/secret/#automatic-mounting-of-manually-created-secrets
+We can do the same for image pull secret
+OK
 
 ## Note on mode
 
@@ -135,3 +137,8 @@ password: 39528$vdg7Jb
 All OK
 PR to improve output and 2 spaces in more
 DONE: https://github.com/kubernetes/website/pull/21027 
+
+See also service account in [security section](../Security/2-service-account.md)
+With all this doc linked: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
+
+PR doc improvement: https://github.com/kubernetes/website/pull/21043

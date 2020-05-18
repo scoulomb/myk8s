@@ -1,5 +1,8 @@
 # Service account
 
+From [doc](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account)
+> When you (a human) access the cluster (for example, using kubectl), you are authenticated by the apiserver as a particular User Account (currently this is usually admin, unless your cluster administrator has customized your cluster). Processes in containers inside pods can also contact the apiserver. When they do, they are authenticated as a particular Service Account (for example, default).
+
 ## Clean up from previous run
 
 k delete pod app app
@@ -363,5 +366,246 @@ N4b1lxdVlrbmQ4S2sxSXB1eVFxUXBnTTIxLVducTgtY3Fuc2VZYzJ2SnhVWDRtaEpKZDBkR0xyeGxSTG
 ````
 
 it is working
+
+## Disable auto mount
+
+In pod spec (or in sa), we can add the field: `automountServiceAccountToken: false`.
+In that case the service account token will not be mounted.
+                                                                  
+````shell script
+➤ k describe pods app | grep -A 5 Mounts                                      vagrant@archlinux
+    Mounts:
+      /mariadb-password from mariadb (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from specific-service-account-token-b5trt (ro)
+Conditions:
+  Type              Status
+  Initialized       True
+[10:13] ~
+➤ vim app.yaml                                                                vagrant@archlinux
+[10:15] ~
+➤ k delete -f app.yaml                                                        vagrant@archlinux
+pod "app" deleted
+[10:15] ~
+➤ k create -f app.yaml                                                        vagrant@archlinux
+pod/app created
+[10:16] ~
+➤ k describe pods app | grep -A 5 Mounts                                      vagrant@archlinux
+    Mounts:
+      /mariadb-password from mariadb (rw)
+Conditions:
+  Type              Status
+  Initialized       True
+  Ready             False
+[10:16] ~
+➤                                                                             vagrant@archlinux
+````
+
+This is documented here:
+- https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#use-the-default-service-account-to-access-the-api-server
+- https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#use-multiple-service-accounts    
+
+Note we can create a secret from a service account:
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#use-multiple-service-accounts
+
+     
+                                                                  
+## Link secret to service account
+
+### Change secret to use something different than sa
+
+````
+k delete sa --all
+k delete pod --all
+k delete secret --all
+
+echo '
+apiVersion: v1
+kind: Secret
+metadata:
+   name: database-secret
+data:
+   password: cEBzc3czb2QK' > database-secret.yaml
+
+k create -f database-secret.yaml
+
+echo '
+apiVersion: v1
+kind: ServiceAccount
+metadata: 
+  name: specific-service-account
+' > specific-service-account.yaml
+
+k create -f specific-service-account.yaml
+
+secrets:
+- name: specific-service-account-token-7s2s2 => database-secret
+➤ k edit serviceaccount/specific-service-account                              vagrant@archlinux
+serviceaccount/specific-service-account edited
+
+echo 'apiVersion: v1
+kind: Pod
+metadata:
+  name: app
+spec:
+  serviceAccountName: specific-service-account
+  securityContext:
+    runAsUser: 1000
+  containers:
+  - name: busy
+    image: busybox
+    command:
+     - sleep
+     - "3600"
+' > app.yaml
+
+k create -f app.yaml
+
+````
+
+output show it has been ignored, it recreates the secret lnked to service account
+And mdified name of database secret which is ignored as not existing.
+
+````shell script
+➤ k describe pods app | grep -A 5 Mounts                                      vagrant@archlinux
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from specific-service-account-token-b4g5b (ro)
+Conditions:
+  Type              Status
+  Initialized       True
+  Ready             False
+[10:28] ~
+➤ k exec -it app -- /bin/sh                                                   vagrant@archlinux/ $ ls /var/run/secrets/kubernetes.io/serviceaccount
+ca.crt     namespace  token
+/ $ cat /var/run/secrets/kubernetes.io/serviceaccount/token
+eyJhbGciOiJSUzI1NiIsImtpZCI6Ii0yZG5pR1lUQlBLQXRxTmFzOEhJNXJpaEl5ZTNwdmdaMWU2NktET0tETTQifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZWZhdWx0Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZWNyZXQubmFtZSI6InNwZWNpZmljLXNlcnZpY2UtYWNjb3VudC10b2tlbi1iNGc1YiIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50Lm5hbWUiOiJzcGVjaWZpYy1zZXJ2aWNlLWFjY291bnQiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC51aWQiOiJlMTllYmUwNi03MzY0LTQ0YmItYjg3Yy05NGRiYjBjMDYwOWUiLCJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6ZGVmYXVsdDpzcGVjaWZpYy1zZXJ2aWNlLWFjY291bnQifQ.tCRsMYkK8UhE6bzvsdtKQbKK1Gu9tbDPhMmZ8Hgm7JN3EK7w9u9POasVP5XYzefJOYcBgKFjiJC5jSNPnjoX8ZfkaOIxRgzt0qBwhhjWMqvb18RJVH-LMJwTF13eJ_aSb-ov3bAjpP3D7r1NRltl8E0fTlmH14OX3XiK6csfjQIVGMb9G3B7MXbxUTcq5Wuoz4DBxLk50FSsG8XGhZgxs7ChVY-XMk3NhOW9-3RLJJXbn3sV-X50PFgjQoBPlsH1K2oheYSCa0fEP1skk1fdqJj_0GWRawqq-hiJt72Ixig7wPo1E1sh5_IV6r-fQDyrfqYCMnqTFqZtY1AGHrjnsg/ $
+/ $ exit
+[10:29] ~
+➤ k get sa                                                                    vagrant@archlinuxNAME                       SECRETS   AGE
+default                    1         7m42s
+specific-service-account   2         6m42s
+[10:30] ~
+➤ k get sa specific-service-account -o yaml                                   vagrant@archlinuxapiVersion: v1
+kind: ServiceAccount
+metadata:
+  creationTimestamp: "2020-05-18T10:23:22Z"
+  name: specific-service-account
+  namespace: default
+  resourceVersion: "67805"
+  selfLink: /api/v1/namespaces/default/serviceaccounts/specific-service-account
+  uid: e19ebe06-7364-44bb-b87c-94dbb0c0609e
+secrets:
+- name: database-secreunt-token-7s2s2
+- name: specific-service-account-token-b4g5b
+[10:30] ~
+➤ k get secrets                                                               vagrant@archlinuxNAME                                   TYPE                                  DATA   AGE
+database-secret                        Opaque                                1      7m35s
+default-token-l5d2z                    kubernetes.io/service-account-token   3      8m8s
+specific-service-account-token-7s2s2   kubernetes.io/service-account-token   3      7m18s
+specific-service-account-token-b4g5b   kubernetes.io/service-account-token   3      4m22s
+````
+
+This secret is dedicated to service account.
+We should use pod pre-set:
+https://kubernetes.io/docs/concepts/configuration/secret/#automatic-mounting-of-manually-created-secrets
+
+### Associate pull secret to a service account
+
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#add-imagepullsecrets-to-a-service-account
+
+````buildoutcfg
+➤ k get sa                                                                    vagrant@archlinux
+NAME                       SECRETS   AGE
+default                    1         57m
+specific-service-account   2         56m
+
+➤ kubectl create secret docker-registry myregistrykey2 --docker-server=DOCKER_REGISTRY_SERVER --docker-username=DOCKER_USER --docker-password=DOCKER_PASSWORD --docker-email=DOCKER_EMAIL
+secret/myregistrykey2 created
+
+➤ k get sa default -o yaml                                                    vagrant@archlinux
+apiVersion: v1
+imagePullSecrets:
+- name: myregistrykey2e
+kind: ServiceAccount
+[...]
+secrets:
+- name: default-token-l5d2z
+
+➤ k get pod app -o yaml                                                       vagrant@archlinuxapiVersion: v1
+kind: Pod
+[...]
+    volumeMounts:
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: specific-service-account-token-b4g5b
+      readOnly: true
+  dnsPolicy: ClusterFirst
+  enableServiceLinks: true
+  nodeName: archlinux
+  priority: 0
+  restartPolicy: Always
+  schedulerName: default-scheduler
+  securityContext:
+    runAsUser: 1000
+  serviceAccount: specific-service-account
+  serviceAccountName: specific-service-account
+  terminationGracePeriodSeconds: 30
+[...]
+  volumes:
+  - name: specific-service-account-token-b4g5b
+    secret:
+      defaultMode: 420
+      secretName: specific-service-account-token-b4g5b
+
+
+# In app.yaml we remove `spec.serviceAccountName: specific-service-account` and recreate the pod
+➤ cat app.yaml                                                                vagrant@archlinux
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app
+spec:
+  securityContext:
+    runAsUser: 1000
+  containers:
+  - name: busy
+    image: busybox
+    command:
+     - sleep
+     - "3600"
+
+➤ k create -f app.yaml                                                        vagrant@archlinu
+xpod/app created
+[11:14] ~
+➤ k get pod app -o yaml                                                       vagrant@archlinux
+apiVersion: v1
+kind: Pod
+[...]
+    volumeMounts:
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: default-token-l5d2z
+      readOnly: true
+  dnsPolicy: ClusterFirst
+  enableServiceLinks: true
+  imagePullSecrets:
+  - name: myregistrykey2e
+ [...]
+  volumes:
+  - name: default-token-l5d2z
+    secret:
+      defaultMode: 420
+      secretName: default-token-l5d2z
+````
+
+We can that in pod `imagePullSecret` is added (with volune mount too) because image pull secret is related to default sa.
+==> https://github.com/kubernetes/website/pull/21043
+
+
+## SA vol projection
+
+We saw auto mount of sa.
+We can also decide where to mount it:
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#service-account-token-volume-projection
+
+I skipped: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#service-account-issuer-discovery
+ 
 
 We will now [see network policy](./3-1-network-policy-NoPolicy.md).
