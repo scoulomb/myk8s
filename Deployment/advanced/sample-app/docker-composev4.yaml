@@ -1,0 +1,16 @@
+version: "3.6"
+services:
+  server:
+    build:
+      dockerfile: pod.Dockerfile
+      context: ./serverv4
+    image: server:v4
+    ports:
+      - 8080:8080
+  curl:
+    build:
+      dockerfile: curl.Dockerfile
+      context: ./curl
+    image: curl
+    depends_on:
+      - server
