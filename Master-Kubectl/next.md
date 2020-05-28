@@ -14,5 +14,10 @@
 
 - OPTIONAL: Open ticket based on [Discrepancy between `k run` and `k create`](./1-kubectl-create-explained-ressource-derived-from-pod.md)
 - Complete cheatsheet based on [this](https://github.com/dgkanatsios/CKAD-exercises) 
+in particular question f
+Get the pod IPs. Create a temp busybox pod and trying hitting them on port 8080
+
 - create cm / secret
+- complete cheat sheet with 0,1,2
+- complete cheat sheet with deployment/advanced
 

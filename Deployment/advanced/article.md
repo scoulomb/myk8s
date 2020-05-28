@@ -218,9 +218,8 @@ Date: Tue, 26 May 2020 11:39:55 GMT
 We can see traffic is load balanced between pods.
 
 
-Side note: [TODO]
 We can observe that when creating service no `containerPort` was created unlike `kubectl run`
-Impact can be seen when using the proxy
+Impact can be seen when using the proxy. See note on [container port](./container-port.md).
 
 ## Load new software version: v2 and trigger a new deployment
 
@@ -236,7 +235,7 @@ I will now trigger a new deployment, by doing `$ k explain deployment.spec.strat
 We can see default maxSurge is 25%, and maxUnavailable is 25%,
 With 3 replicas maxSurge and maxUnavailable will be 1.
 
-<--
+<!--
 p272-compliant
 note maxUnavailable is relative to #replicas, so we can have more unavailable pod OK
 -->
@@ -1194,7 +1193,7 @@ REVISION  CHANGE-CAUSE
 
 
 
-<--
+<!--
 SO OK THIS IS CRISTAL CLEAR !! STOP
 Note on dash in same Luska chapter. had seen it in [here doc](../../Master-Kubectl/here-doc.md).
 -->
@@ -1250,17 +1249,21 @@ Date: Tue, 26 May 2020 13:12:41 GMT
 
 We have a 500, at 13 seconds from v3.
 This the last time we target v3 because  after resdiness failed.
+This the last time we target v3 because  after resdiness failed.
 Here it was targetted because we check it every second OK
 
-<--
+<!--
 Note: I add an intermediate version as first try failed
 At the bginning I wanted to make a command in deployment and run a command in readiness
 but better with docker OK STOP
 -->
 
+See note on [container port](./container-port.md).
 
+<!--
 ONLY REMAINING HERE
 - ALL IS OK HERE
 - Lien note ckad exo juge OK
 - Had copied last version of sample APP OK
-- Check TODO sur le proxy <-- HERE
+- Note sur le proxy OK
+-->
