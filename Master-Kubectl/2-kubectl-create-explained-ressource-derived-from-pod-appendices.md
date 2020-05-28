@@ -661,3 +661,6 @@ Status:       Running
 Pod continues to run and no other pods are triggered, 
 But actually pod will be considered as failed after sleep finished and it will retrigger new pod.
 This can be tested by reducing sleep duration ok.
+
+[next section](3-Understand-resource-pod-template.md)
+ 
