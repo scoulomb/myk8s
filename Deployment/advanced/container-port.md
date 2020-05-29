@@ -122,7 +122,7 @@ status: {}
 
 https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#creating-a-deployment
 
-Where we can take previous manifest 
+Where we can take previous manifest from `k run` or from below `k create deployment`
 
 ### Using kubectl create deployment 
 
