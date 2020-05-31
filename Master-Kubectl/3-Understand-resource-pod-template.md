@@ -379,3 +379,31 @@ NAME                                READY   STATUS      RESTARTS   AGE
 alpine-cronjob-1590750180-4kwxs     0/1     Completed   0          18s
 ````
 OK
+
+### Syntax
+
+In fish unlike bash we need `jsonpath='{.items[*].metadata.name}'` with `'`.
+
+````shell script
+[vagrant@archlinux ~]$ kubectl get jobs
+NAME                        COMPLETIONS   DURATION   AGE
+alpine-cronjob-1590753300   1/1           6s         2m13s
+alpine-cronjob-1590753360   1/1           6s         72s
+alpine-cronjob-1590753420   1/1           6s         12s
+[vagrant@archlinux ~]$ pods=$(kubectl get pods --selector=job-name=alpine-cronjob-1590753360 --output=jsonpath={.items[*].metadata.name})
+[vagrant@archlinux ~]$ echo $pods
+alpine-cronjob-1590753360-7mnwm
+[vagrant@archlinux ~]$ pods=$(kubectl get pods --selector=job-name=alpine-cronjob-1590753360 -o jsonpath={.items[*].metadata.name})
+[vagrant@archlinux ~]$ echo $pods
+alpine-cronjob-1590753360-7mnwm
+[vagrant@archlinux ~]$ exit
+exit
+[11:58] ~
+➤ k get pods --selector=job-name=alpine-cronjob-1590753360 -o jsonpath={.items[*].metadata.name}
+fish: No matches for wildcard “jsonpath={.items[*].metadata.name}”. See `help expand`.
+k get pods --selector=job-name=alpine-cronjob-1590753360 -o jsonpath={.items[*].metadata.name}
+                                                            ^
+[11:58] ~
+➤ k get pods --selector=job-name=alpine-cronjob-1590753360 -o jsonpath='{.items[*].metadata.name}'
+alpine-cronjob-1590753360-7mnwm⏎
+````
