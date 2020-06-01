@@ -44,6 +44,7 @@ Also, YAML syntax can confuse but args is at same level as image.
 
 <details><summary>Before 1.18 version</summary>
 <p>
+  
 This is the way to do  from `1.18`, prior it will create a deployment (as default `restartPolicy` is always and based on [this doc](./0-kubectl-run-explained.md#doc-confirming-behavior) as shown in [previous step, first run command](./0-kubectl-run-explained.md#Obeservations).
 
 
