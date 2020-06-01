@@ -42,14 +42,65 @@ Tips: when copy/pasting from terminal grab area
 We can see that this created in the manifest the `spec.containers.args` field with `/bin/sleep` and `10`.
 Also, YAML syntax can confuse but args is at same level as image.
 
-This is the way to do  from `1.18`, prior it will create a deployment as shown in previous step,
-To create a pod do (removing client arg from dry-run):
+<details><summary>Before 1.18 version</summary>
+<p>
+This is the way to do  from `1.18`, prior it will create a deployment (as default `restartPolicy` is always and based on [this doc](./0-kubectl-run-explained.md#doc-confirming-behavior) as shown in [previous step](./0-kubectl-run-explained.md#version-116).
+
+
+To create a pod before 1.18 (removing client arg from dry-run):
 
 ````buildoutcfg
 sudo kubectl run alpine --image alpine --restart=Never --dry-run -o yaml -- /bin/sleep 10 
 ````
+Based on restart it creates apod as shown in [this doc](./0-kubectl-run-explained.md#doc-confirming-behavior) 
+
+Or with the generator as shown previously if we want `Always` restart policy as shown in [previous doc](=./0-kubectl-run-explained.md#doc-confirming-behavior) to be strictly equivalent.
 
 Next of the section was tested with `1.18` but except removal of `dry-run` argument no change is expected in older version.
+
+</p>
+</details>
+
+However I recommend for pod to use `restart=Never` thus:
+
+````commandline
+k run alpine --image alpine --restart=Never --dry-run=client -o yaml -- /bin/sleep 10
+````
+
+<!--
+
+````
+sylvain@sylvain-hp:~$ sudo -i
+[sudo] password for sylvain: 
+root@sylvain-hp:~# alias k='kubectl'
+root@sylvain-hp:~# k run alpine --image alpine --restart=Never --dry-run=client -o yaml -- /bin/sleep 10
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: alpine
+  name: alpine
+spec:
+  containers:
+  - args:
+    - /bin/sleep
+    - "10"
+    image: alpine
+    name: alpine
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Never
+status: {}
+
+root@sylvain-hp:~# k version
+Client Version: version.Info{Major:"1", Minor:"18", GitVersion:"v1.18.3", GitCommit:"2e7996e3e2712684bc73f0dec0200d64eec7fe40", GitTreeState:"clean", BuildDate:"2020-05-20T12:52:00Z", GoVersion:"go1.13.9", Compiler:"gc", Platform:"linux/amd64"}
+Server Version: version.Info{Major:"1", Minor:"18", GitVersion:"v1.18.2", GitCommit:"52c56ce7a8272c798dbc29846288d7cd9fbae032", GitTreeState:"clean", BuildDate:"2020-04-16T11:48:36Z", GoVersion:"go1.13.9", Compiler:"gc", Platform:"linux/amd64"}
+
+````
+Later ubuntu@hp had 1.18 while vagrant Archlinux had <1.18.
+-->
+
 
 ## Create Job
 
