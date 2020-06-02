@@ -19,5 +19,5 @@ Get the pod IPs. Create a temp busybox pod and trying hitting them on port 8080
 
 - create cm / secret
 - complete cheat sheet with 0,1,2
-- complete cheat sheet with deployment/advanced
+- complete cheat sheet with deployment/advanced + master kubectl / next.md
 
