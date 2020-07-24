@@ -78,3 +78,8 @@ and in here doc
 8/05: ALL IS Here for k8s!
 UPDATE GIT + HERE OKOKOK
 
++- Luska
++
++write controller and stateful set question
++
++oldgist
