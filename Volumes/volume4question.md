@@ -271,7 +271,7 @@ https://github.com/scoulomb/myk8s/blob/master/Volumes/fluentd-tutorial.md#genera
 https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#add-configmap-data-to-a-specific-path-in-the-volume
 Here we select a specif cm key
 
-- Set file names and access mode in Volume form ConfigMap data (particular case)
+- Set file names and access mode in Volume form ConfigMap data (particular case of previous bullet)
 https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#project-keys-to-specific-paths-and-file-permissions
 
 - Can be used by system components and controller (k8s controller)
@@ -279,3 +279,5 @@ https://clouddocs.f5.com/products/connectors/k8s-bigip-ctlr/v1.5/#f5-resource-co
 
 
 Volume ccl ok
+Doc PR: https://github.com/kubernetes/website/pull/21028/commits/4f18583d199a950de87de89045f5c1f0bf891788
+All: https://github.com/kubernetes/website/pulls?q=is%3Apr+is%3Aclosed+author%3Ascoulomb+
