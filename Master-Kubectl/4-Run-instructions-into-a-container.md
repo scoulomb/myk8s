@@ -183,13 +183,55 @@ pod "mypod" deleted
 ➤                                                             vagrant@archlinux
 ````
 
+Update: actually the second case is not working and it is a side effect, of the first case and will prove it:
+
+````shell script
+IP="216.58.213.131"
+sudo kubectl run mypodtsta --rm -it --image=busybox --restart=Never -- wget -O- "$IP":80 | grep Connecting
+sudo kubectl run mypodtstb --rm -it --image=busybox --restart=Never --env="IP=$IP" -- wget -O- $IP:80 | grep Connecting
+unset IP
+sudo kubectl run mypodtstc --rm -it --image=busybox --restart=Never --env="IP=216.58.213.131" -- wget -O- $IP:80 | grep Connecting
+sudo kubectl run mypodtstc2 --rm -it --image=busybox --restart=Never --env="IP=216.58.213.131" -- echo "$IP:80" 
+sudo kubectl run mypodtstd --rm -it --image=busybox --restart=Never --env="IP=216.58.213.131" -- /bin/sh -c 'wget -O- $IP:80' | grep Connecting
+````
+
+output is 
+
+````shell script
+sylvain@sylvain-hp:~/docker-doctor$ IP="216.58.213.131"
+sylvain@sylvain-hp:~/docker-doctor$ sudo kubectl run mypodtsta --rm -it --image=busybox --restart=Never -- wget -O- "$IP":80 | grep Connecting
+Connecting to 216.58.213.131:80 (216.58.213.131:80)
+Connecting to www.google.com (216.58.201.228:80)
+sylvain@sylvain-hp:~/docker-doctor$ sudo kubectl run mypodtstb --rm -it --image=busybox --restart=Never --env="IP=$IP" -- wget -O- $IP:80 | grep Connecting
+Connecting to 216.58.213.131:80 (216.58.213.131:80)
+Connecting to www.google.com (216.58.201.228:80)
+sylvain@sylvain-hp:~/docker-doctor$ unset IP
+sylvain@sylvain-hp:~/docker-doctor$ sudo kubectl run mypodtstc --rm -it --image=busybox --restart=Never --env="IP=216.58.213.131" -- wget -O- $IP:80 | grep Connecting
+pod default/mypodtstc terminated (Error)
+sylvain@sylvain-hp:~/docker-doctor$ sudo kubectl run mypodtstc2 --rm -it --image=busybox --restart=Never --env="IP=216.58.213.131" -- echo "$IP:80"
+:80
+pod "mypodtstc2" deleted
+sylvain@sylvain-hp:~/docker-doctor$ sudo kubectl run mypodtstd --rm -it --image=busybox --restart=Never --env="IP=216.58.213.131" -- /bin/sh -c 'wget -O- $IP:80' | grep Connecting
+
+Connecting to 216.58.213.131:80 (216.58.213.131:80)
+Connecting to www.google.com (216.58.201.228:80)
+sylvain@sylvain-hp:~/docker-doctor$
+sylvain@sylvain-hp:~/docker-doctor$ sudo kubectl run mypodtstd2 --rm -it --image=busybox --restart=Never --env="IP=216.58.213.131" -- /bin/sh -c 'echo $IP:80'
+216.58.213.131:80
+pod "mypodtstd2" deleted
+sylvain@sylvain-hp:~/docker-doctor$
+````
+
+CQFD. It was using the var defined in the shell (mypodtstb), when it is unset (mypodtstc), we can see variable expansion does not occur.
+Variable expansion is performed only if we have a shell (mypodtstd).
+And consistent with: https://github.com/scoulomb/docker-doctor/blob/main/README.md#Link-other-projects
+
 Used in [CKAD](https://github.com/scoulomb/CKAD-exercises/blob/master/a.core_concepts.md#get-nginx-pods-ip-created-in-previous-step-use-a-temp-busybox-image-to-wget-its-).
 
 #### Note on temporary pod are not 
 
 Note `i` is always mandatory here but  t become optional when injecting command directly.
  rm` if we want pod deletion. If rm is removed container will not be deleted automatically
-
 
 
 #### We can use '/bin/sh -c'    
