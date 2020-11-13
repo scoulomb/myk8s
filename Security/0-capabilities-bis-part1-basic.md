@@ -57,7 +57,7 @@ For this we need a local registry as explained here (or use alternative describe
 https://github.com/scoulomb/myk8s/blob/master/tooling/test-local-registry.sh
 
 
-We push our custom image to registry (as ephemeral need to repush at each restart)
+We push our custom image to registry (as ephemeral need to repush at each restart). We can use image-pull-policy never as alternative.
 I could use dockerhub instead.
 
 ````
@@ -322,7 +322,7 @@ command terminated with exit code 1
 
 Still not able to do traceroute or chown,
 
-It confirm that even if give container more capabilites but not root it still does not work.
+It confirm that even if give container more capabilities but not root it still does not work.
 
 New capa are visible here:
 
@@ -354,13 +354,43 @@ $ capsh --decode=00000000aa0435fb | grep chown
 0x00000000aa0435fb=cap_chown,cap_dac_override,cap_fowner,cap_fsetid,cap_kill,cap_setgid,cap_setuid,cap_setpcap,cap_net_bind_service,cap_net_admin,cap_net_raw,cap_sys_chroot,cap_sys_time,cap_mknod,cap_audit_write,cap_setfcap
 ````
 
+
+Using busybox leads to same result
+
+````shell script
+k delete pod pod-as-user-guest-with-new-capa
+echo '
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-as-user-guest-with-new-capa-busybox
+spec:
+  containers:
+  - name: main
+    image: alpine
+    command: ["/bin/sleep", "999999"]
+    securityContext:
+      runAsUser: 405
+      capabilities : 
+        add: ["NET_ADMIN", "SYS_TIME", "CHOWN", "FOWNER", "FSETID"]' > pod-as-user-guest-with-new-capa-busybox.yaml
+                             
+k create -f  pod-as-user-guest-with-new-capa-busybox.yaml
+````
+output is 
+
+````shell script
+root@sylvain-hp:/home/sylvain/ubuntu# k exec -it pod-as-user-guest-with-new-capa-busybox -- traceroute 127.0.0.1
++ kubectl exec -it pod-as-user-guest-with-new-capa-busybox -- traceroute 127.0.0.1
+traceroute: socket(AF_INET,3,1): Operation not permitted
+command terminated with exit code 1
+````
 ###  Adding/removing capabilities to root containers
 
 #### Constat
 
 Conclusion of previous section is that even if container has correct capabilities,
-non root user can still not perform special operation.
-This behavior is distribution depdendent (see [SO question](#Side-note-based-on-SO-answer)).
+Non root user can still not perform special operation.
+This behavior is actually distribution dependent (see [SO question](#part-2-so-comment)).
 
 #### We can remove capabilities to root container:
 This is confirmed by this quick test:
@@ -464,14 +494,16 @@ But it does not bypass capa as I could read.
 - I can not perform chown because we dropped `CHOWN` 
 
 
-#### Side note based on SO answer
+#### Side note based on SO answer and distribution dependent behavior
+
+#### Part 1
 
 As spotted by SO question.
 The behavior which prevent from running a traceroute when not root is distribution dependent (busybox,alpine != ubuntu).
 Cf answer here: https://stackoverflow.com/questions/61043365/operation-not-permitted-when-performing-a-traceroute-from-a-container-deployed-i/61396011#61396011
 
 Here I have a Ubuntu container baked with root uid, and which runs with a specific user id.
-(Note test is on minikube, I run with a root kubectl user to not have psp applied)/
+(Note test is on minikube, I run with a root kubectl user to not have psp applied).
 
 I will use image pull policy to never to not deploy an artifactroy ([see readme](../README.md)).
 
@@ -488,7 +520,7 @@ echo '
 apiVersion: v1
 kind: Pod
 metadata:
-  name: ubuntu
+  name: pod-nonroot-with-modified-capa
 spec:
   containers:
   - name: main
@@ -497,47 +529,48 @@ spec:
     command: ["/bin/sleep", "999999"]
     securityContext:
       runAsUser: 2000
-
+      capabilities:
         add: ["SYS_TIME"]
-        drop: ["CHOWN", "NET_RAW"]' > pod-root-with-modified-capa.yaml ' > ubuntu.yaml
-                             
-kubectl  create -f  ubuntu.yaml  
+        drop: ["CHOWN", "NET_RAW"]' > pod-nonroot-with-modified-capa.yaml 
+sudo su                             
+kubectl  create -f  pod-nonroot-with-modified-capa.yaml 
 ````
 
+If error when sourcing copy/past, capa_test.sh content.
 
 Output is:
 
 ````buildoutcfg
-root@minikube:~/ubuntu/ubuntu# capa_test ubuntu
-+ capa_test ubuntu
+root@sylvain-hp:/home/sylvain/ubuntu# capa_test pod-nonroot-with-modified-capa
++ capa_test pod-nonroot-with-modified-capa
 + set -x
-+ kubectl exec ubuntu -- id
++ kubectl exec pod-nonroot-with-modified-capa -- id
 uid=2000 gid=0(root) groups=0(root)
 + grep --color=auto CapBnd
-+ kubectl exec ubuntu -- grep Cap /proc/1/status
-CapBnd: 00000000a80425fb
-+ kubectl exec ubuntu -- traceroute 127.0.0.1
++ kubectl exec pod-nonroot-with-modified-capa -- grep Cap /proc/1/status
+CapBnd: 00000000aa0405fa
++ kubectl exec pod-nonroot-with-modified-capa -- traceroute 127.0.0.1
 traceroute to 127.0.0.1 (127.0.0.1), 30 hops max, 60 byte packets
- 1  localhost (127.0.0.1)  0.015 ms  0.003 ms  0.003 ms
-+ kubectl exec ubuntu -- date +%T -s 12:00:00
-date: cannot set date: Operation not permitted
+ 1  localhost (127.0.0.1)  0.030 ms  0.011 ms  0.008 ms
++ kubectl exec pod-nonroot-with-modified-capa -- date +%T -s 12:00:00
 12:00:00
+date: cannot set date: Operation not permitted
 command terminated with exit code 1
 + true
-+ kubectl exec ubuntu -- chmod 777 home
++ kubectl exec pod-nonroot-with-modified-capa -- chmod 777 home
 chmod: changing permissions of 'home': Operation not permitted
 command terminated with exit code 1
 + echo 1
 1
-+ kubectl exec ubuntu -- chown nobody /
++ kubectl exec pod-nonroot-with-modified-capa -- chown nobody /
 chown: changing ownership of '/': Operation not permitted
 command terminated with exit code 1
 + echo 1
 1
 ````
 
-I can perform a traeceroute even if not root.
-But even when dropping capabilities
+I can perform a traceroute even if not root.
+But even when dropping more capabilities
 
 ````buildoutcfg
 echo '
@@ -563,17 +596,17 @@ Output is
 
 
 ````buildoutcfg
-root@minikube:~/ubuntu/ubuntu# capa_test customubuntudrop3capa
+root@sylvain-hp:/home/sylvain/ubuntu# capa_test customubuntudrop3capa
 + capa_test customubuntudrop3capa
 + set -x
 + kubectl exec customubuntudrop3capa -- id
 uid=2000 gid=0(root) groups=0(root)
-+ kubectl exec customubuntudrop3capa -- grep Cap /proc/1/status
 + grep --color=auto CapBnd
++ kubectl exec customubuntudrop3capa -- grep Cap /proc/1/status
 CapBnd: 00000000a80401fb
 + kubectl exec customubuntudrop3capa -- traceroute 127.0.0.1
 traceroute to 127.0.0.1 (127.0.0.1), 30 hops max, 60 byte packets
- 1  localhost (127.0.0.1)  0.012 ms  0.003 ms  0.003 ms
+ 1  localhost (127.0.0.1)  0.457 ms  0.414 ms  0.391 ms
 + kubectl exec customubuntudrop3capa -- date +%T -s 12:00:00
 date: cannot set date: Operation not permitted
 12:00:00
@@ -600,10 +633,170 @@ $ capsh --decode=00000000a80401fb
 
 Same if run as root (uid 0)
 
-So comment to answer in SO
-> This helps me understand a bit more. I agree that for busybox/alpine image it is not possible to run a traceroute when not root whatever the capabilities (PS: already possible with default added capa). However it is possible to drop capabilities and prevent root user from doing a traceroute. However I do not fully agree with last part of your answer because it seems that with the ubuntu image even when  explicitly dropping ["NET_RAW", "NET_BIND_SERVICE", "NET_ADMIN"], with root or non root user I can still perform a traceroute. 
+##### Part 2: SO comment
 
-Added answer on 28apr19 ok - come back only if update
+So comment to answer in SO
+> This helps me understand a bit more. I agree that for busybox/alpine image it is not possible to run a traceroute when not root whatever the capabilities. However it is possible to drop capabilities(*) and prevent root user from doing a traceroute. However I do not fully agree with last part of your answer because it seems that with the ubuntu image even when  explicitly dropping ["NET_RAW", "NET_BIND_SERVICE", "NET_ADMIN"], with root or non root user I can still perform a traceroute. 
+
+<!-- Note default capa with default psp does not drop NET_RAW, not rechecked but ok --> 
+(*) always tested with Alpine image in this [section](#test-adding-and-removing-capabilities-to-root-in-kubernetes).
+
+<!-- Added answer on 28apr19 ok - come back only if update;
+it summarize three last point OK-->
+
+
+
+##### Part 3: TCP traceroute
+
+By default we always did a UDP traceroute.
+It is possible to perform a TCP traceroute.
+For instance `traceroute -T -p 443 mozilla.org`.
+
+Output of
+
+````shell script
+kubectl exec pod-nonroot-with-modified-capa -- traceroute -T -p 443 mozilla.org
+kubectl exec customubuntudrop3capa -- traceroute -T -p 443 mozilla.org
+````
+
+
+is 
+
+````shell script
+root@sylvain-hp:/home/sylvain/ubuntu# kubectl exec pod-nonroot-with-modified-capa -- traceroute -T -p 443 mozilla.org
++ kubectl exec pod-nonroot-with-modified-capa -- traceroute -T -p 443 mozilla.org
+You do not have enough privileges to use this traceroute method.
+socket: Operation not permitted
+command terminated with exit code 1
+root@sylvain-hp:/home/sylvain/ubuntu# kubectl exec customubuntudrop3capa -- traceroute -T -p 443 mozilla.org
++ kubectl exec customubuntudrop3capa -- traceroute -T -p 443 mozilla.org
+You do not have enough privileges to use this traceroute method.
+socket: Operation not permitted
+command terminated with exit code 1
+````
+
+But if I replace `drop` by `add` in customubuntudrop3capa:
+
+````shell script
+echo '
+apiVersion: v1
+kind: Pod
+metadata:
+  name: customubuntuadd3capa
+spec:
+  containers:
+  - name: main
+    image: customubuntu
+    imagePullPolicy: Never
+    command: ["/bin/sleep", "999999"]
+    securityContext:
+      runAsUser: 2000 
+      capabilities:
+        add: ["NET_RAW", "NET_BIND_SERVICE", "NET_ADMIN"]' > customubuntu_add_3_capa.yaml
+                             
+kubectl  create -f customubuntu_add_3_capa.yaml
+````
+
+and run 
+
+````shell script
+kubectl exec customubuntuadd3capa -- traceroute -T -p 443 mozilla.org
+````
+
+output is 
+
+````shell script
+root@sylvain-hp:/home/sylvain/ubuntu# kubectl exec customubuntuadd3capa -- traceroute -T -p 443 mozilla.org
++ kubectl exec customubuntuadd3capa -- traceroute -T -p 443 mozilla.org
+You do not have enough privileges to use this traceroute method.
+socket: Operation not permitted
+command terminated with exit code 1
+````
+
+It is still not allowed.
+We have to be root.
+So removing `runAsUser`
+
+````shell script
+echo '
+apiVersion: v1
+kind: Pod
+metadata:
+  name: customubuntuadd3capaandroot
+spec:
+  containers:
+  - name: main
+    image: customubuntu
+    imagePullPolicy: Never
+    command: ["/bin/sleep", "999999"]
+    securityContext:
+      capabilities:
+        add: ["NET_RAW", "NET_BIND_SERVICE", "NET_ADMIN"]' > customubuntu_add_3_capa_and_root.yaml
+                             
+kubectl  create -f customubuntu_add_3_capa_and_root.yaml
+````
+
+and 
+
+````shell script
+kubectl exec customubuntuadd3capaandroot -- traceroute -T -p 443 mozilla.org
+````
+
+
+ouptut is
+
+````shell script
+root@sylvain-hp:/home/sylvain/ubuntu# kubectl exec customubuntuadd3capaandroot -- traceroute -T -p 443 127.0.0.1
++ kubectl exec customubuntuadd3capaandroot -- traceroute -T -p 443 127.0.0.1
+traceroute to 127.0.0.1 (127.0.0.1), 30 hops max, 60 byte packets
+ 1  localhost (127.0.0.1)  0.247 ms  0.224 ms  0.217 ms
+````
+
+If we drop capa of root user
+
+````shell script
+echo '
+apiVersion: v1
+kind: Pod
+metadata:
+  name: customubuntudrop3capaandroot
+spec:
+  containers:
+  - name: main
+    image: customubuntu
+    imagePullPolicy: Never
+    command: ["/bin/sleep", "999999"]
+    securityContext:
+      capabilities:
+        drop: ["NET_RAW", "NET_BIND_SERVICE", "NET_ADMIN"]' > customubuntu_drop_3_capa_and_root.yaml
+                             
+kubectl  create -f customubuntu_drop_3_capa_and_root.yaml
+````
+
+and 
+
+````shell script
+kubectl exec customubuntudrop3capaandroot -- traceroute -T -p 443 mozilla.org
+````
+
+
+ouptut is
+
+````shell script
+root@sylvain-hp:/home/sylvain/ubuntu# kubectl exec customubuntudrop3capaandroot -- traceroute -T -p 443 mozilla.org
++ kubectl exec customubuntudrop3capaandroot -- traceroute -T -p 443 mozilla.org
+You do not have enough privileges to use this traceroute method.
+socket: Operation not permitted
+command terminated with exit code 1
+````
+
+Conclusion is:
+ - TCP traceroute requires root and right capabilities.
+ - Thus **TCP** traceroute with ubuntu follows same [pattern](#part-2-so-comment) as **UDP** Alpine traceroute
+ > For alpine image it is not possible to run a traceroute when not root whatever the capabilities.
+>  However it is possible to drop capabilities and prevent root user from doing a traceroute
+
+For those test we were in that case ["Specific user with docker image with user 0"](#specific-user-with-docker-image-with-user-0).
 
 - See [part 2](0-capabilities-bis-part2-admission-controller-setup.md)
 
@@ -611,3 +804,5 @@ Some notes:
 - Found explanation SO question detailed here!
 - Luska ok modified admin container -> Add `STS_TIME` as I did actually OK
 - LFD make capa on non root user leading to confusion
+
+<!-- use ssh -->
