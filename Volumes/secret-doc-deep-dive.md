@@ -422,7 +422,8 @@ Here we had seen different consumption mode: https://github.com/scoulomb/myk8s/b
 Equivalent with our section and k8s doc
 - [Secrets consumed as environment variable and secret update](#secrets-consumed-as-environment-variable-and-secret-update-but-through-a-job)
     - https://kubernetes.io/docs/concepts/configuration/secret/#using-secrets-as-environment-variables
-    - and https://kubernetes.io/docs/concepts/configuration/secret/#consuming-secret-values-from-environment-variables
+    - and subpart https://kubernetes.io/docs/concepts/configuration/secret/#consuming-secret-values-from-environment-variables
+    - and subpart my pr?
 - [We can consume the secret as volumes](#we-can-consume-the-secret-as-volumes)
     - https://kubernetes.io/docs/concepts/configuration/secret/#consuming-secret-values-from-volumes.
     where we have path from env var.
@@ -430,13 +431,14 @@ Equivalent with our section and k8s doc
     
 For env var we could say in a PR
 ````shell script
-## Consumed secret values from environment variables are not updated automatically
-### v1
 
+### v1
+title: Consumed secret values from environment variables are not updated automatically
 When a secret value currently consumed from environment variable is updated, container's environment variable will not be updated.
 Environment variable will be updated if the container is restarted by the kubelet.
 
 ### v2
+title: Consumed secret values from environment variables are not updated automatically
 If a container already consumed a secret value from environment variable, a secret update will not cascade update to the  containrer.    
 
 Environment variable will be updated if the container is restarted by the kubelet.
@@ -444,11 +446,14 @@ Environment variable will be updated if the container is restarted by the kubele
 => biy envFrom did not try but pretty sure key are also not updated, and would be present if kubelet is restart 
 => already because when not defined error as seen here
 
-### v3
+### v3 (pr)
+title:  Environment variables are not updated after a secret update
 
-If a container already consumed a secret in environment variable, secret update will not cascade update to the  container.  But a container restart by the kubelet will make the secret update available.
-
+If a container already consumed a secret in an environment variable, secret update will not cascade update to the container.
+But if the Kubelet restarts the container, secret update will be available.
 => if pod deleted and restarted it is obvious we have the update  
 ````
 
-<!-- concluded jsut pr k8s website to add -->
+<!-- concluded jsut pr k8s website to add 
+ when doing pr in my k8s could have one update branch we rebase everytime OK-->
+PR => https://github.com/kubernetes/website/pull/25027
