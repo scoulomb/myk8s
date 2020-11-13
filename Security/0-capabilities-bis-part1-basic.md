@@ -386,7 +386,7 @@ command terminated with exit code 1
 ````
 ###  Adding/removing capabilities to root containers
 
-#### Constat
+#### Constat on special ops
 
 Conclusion of previous section is that even if container has correct capabilities,
 Non root user can still not perform special operation.
@@ -412,7 +412,7 @@ $ sudo docker container run --rm -it --cap-drop ALL --cap-add CHOWN 10.106.68.18
 chown: /: Operation not permitted
 ````
 
-As a conclusion capabilities are not bypassed by root but enable to give less rigth to root user.
+As a conclusion capabilities are not bypassed by root but enable to give less right to root user.
 This is what is suggested here: https://www.redhat.com/en/blog/secure-your-containers-one-weird-trick
 
 So I reached the same conclusion as [first version](0-capabilities.archive.md).
@@ -636,7 +636,7 @@ Same if run as root (uid 0)
 ##### Part 2: SO comment
 
 So comment to answer in SO
-> This helps me understand a bit more. I agree that for busybox/alpine image it is not possible to run a traceroute when not root whatever the capabilities. However it is possible to drop capabilities(*) and prevent root user from doing a traceroute. However I do not fully agree with last part of your answer because it seems that with the ubuntu image even when  explicitly dropping ["NET_RAW", "NET_BIND_SERVICE", "NET_ADMIN"], with root or non root user I can still perform a traceroute. 
+> This helps me understand a bit more. I agree that for busybox/alpine image [it is not possible to run a traceroute when not root whatever the capabilities](#constat-on-special-ops). However it is [possible to drop capabilities(*) and prevent root user from doing a traceroute](#test-adding-and-removing-capabilities-to-root-in-kubernetes). However I do not fully agree with last part of your answer because it seems that with the ubuntu image even when  explicitly dropping ["NET_RAW", "NET_BIND_SERVICE", "NET_ADMIN"], with root or non root user [I can still perform a traceroute](#part-1). 
 
 <!-- Note default capa with default psp does not drop NET_RAW, not rechecked but ok --> 
 (*) always tested with Alpine image in this [section](#test-adding-and-removing-capabilities-to-root-in-kubernetes).
@@ -793,8 +793,10 @@ command terminated with exit code 1
 Conclusion is:
  - TCP traceroute requires root and right capabilities.
  - Thus **TCP** traceroute with ubuntu follows same [pattern](#part-2-so-comment) as **UDP** Alpine traceroute
- > For alpine image it is not possible to run a traceroute when not root whatever the capabilities.
->  However it is possible to drop capabilities and prevent root user from doing a traceroute
+    > For Alpine image [it is not possible to run a traceroute when not root whatever the capabilities](#constat-on-special-ops).
+    > However it is [possible to drop capabilities(*) and prevent root user from doing a traceroute](#test-adding-and-removing-capabilities-to-root-in-kubernetes). 
+ - Unlike UDP traceroute with Ubuntu
+    > it seems that with the ubuntu image even when  explicitly dropping ["NET_RAW", "NET_BIND_SERVICE", "NET_ADMIN"], with root or non root user [I can still perform a traceroute (meaning UDP here)](#part-1). 
 
 For those test we were in that case ["Specific user with docker image with user 0"](#specific-user-with-docker-image-with-user-0).
 
