@@ -5,6 +5,7 @@
 I will start from this use-case
 
 https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables
+and using: https://github.com/scoulomb/docker-doctor
 
 ````shell script
 echo 'apiVersion: v1
@@ -46,7 +47,7 @@ PASSWORD=admin123
 USERNAME=admin
 ````
 
-<!-- I use default entrypoint (k8s command) in image, so no need to define it here 
+<!-- I use default docker ENTRYPOINT (k8s command) in image, so no need to define it here 
 Working the same as described in docker-doctor repo--> 
 
 Let's say I update my secret, what will happen here?
@@ -204,6 +205,8 @@ We would need to:
 Given the observation made in section [above](#secrets-consumed-as-environment-variable-and-secret-update-but-through-a-job)
 It would work but only in this order otherwise we would overwrite the secret.
 And the actual secret has to be defined before the pod starts.
+
+<!-- for direct pod definition we could not do pod + empty secret and then coorect secret, we would have to do define correct secret before the pod then it would override good secret!-->
 
 Then then since the cj consumed secret as environment var it can be sue by the application. What we when we call `env`.
 <!-- nameserver PR#68 -->
@@ -409,3 +412,43 @@ admin456
 ````
 
 Password **is** updated without container restart.
+<!-- similar to cm -->
+
+<!-- do not perform update on nr code, kubernetes -->
+
+Here we had seen different consumption mode: https://github.com/scoulomb/myk8s/blob/master/Volumes/volume4question.md#4-configmap-consumption
+
+
+Equivalent with our section and k8s doc
+- [Secrets consumed as environment variable and secret update](#secrets-consumed-as-environment-variable-and-secret-update-but-through-a-job)
+    - https://kubernetes.io/docs/concepts/configuration/secret/#using-secrets-as-environment-variables
+    - and https://kubernetes.io/docs/concepts/configuration/secret/#consuming-secret-values-from-environment-variables
+- [We can consume the secret as volumes](#we-can-consume-the-secret-as-volumes)
+    - https://kubernetes.io/docs/concepts/configuration/secret/#consuming-secret-values-from-volumes.
+    where we have path from env var.
+    and show that  https://kubernetes.io/docs/concepts/configuration/secret/#mounted-secrets-are-updated-automatically
+    
+For env var we could say in a PR
+````shell script
+## Consumed secret values from environment variables are not updated automatically
+### v1
+
+When a secret value currently consumed from environment variable is updated, container's environment variable will not be updated.
+Environment variable will be updated if the container is restarted by the kubelet.
+
+### v2
+If a container already consumed a secret value from environment variable, a secret update will not cascade update to the  containrer.    
+
+Environment variable will be updated if the container is restarted by the kubelet.
+
+=> biy envFrom did not try but pretty sure key are also not updated, and would be present if kubelet is restart 
+=> already because when not defined error as seen here
+
+### v3
+
+If a container already consumed a secret in environment variable, secret update will not cascade update to the  container.  But a container restart by the kubelet will make the secret update available.
+
+=> if pod deleted and restarted it is obvious we have the update  
+````
+
+<!-- concluded jsut pr k8s website to add -->
