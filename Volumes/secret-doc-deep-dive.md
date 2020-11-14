@@ -220,7 +220,15 @@ withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'USER',
 }
 ````
 
-Then perform the two steps.
+Note: This require to create credentials in Jenkins.
+Go to folder Global credentials: https://<jenkins-instance>/job/<project-name>/credentials/store/folder/domain/_/
+Here use  Add Credentials, Kind is username and password 
+Ensure ID matches the one in Jenkins file.
+Other secret you could have is:
+- Dockerhub (or equivalent) credentials
+- and for `oc` or `helm` client (kind is secret text if you use a TOKEN).
+
+Then perform the two steps 1/ 2/.
 
 Do we need to define an empty secret?
 
