@@ -594,3 +594,16 @@ Therefore variable defined directly takes precedence.
 It can be useful to not update teh code is started to use env service discovery and want to switch to option 1 but it is also confusing.
 
 <!-- link secret page and here done STOP CONCLUDE OK -->
+<!-- about a comment made which is compliant
+Note on service discovery 
+Pour les service discovery par environment variable voici la doc de Kubernetes:
+https://kubernetes.io/docs/concepts/services-networking/service/#environment-variables, par rapport a la note 
+> When you have a Pod that needs to access a Service, and you are using the environment variable method to publish the port and cluster IP to the client Pods, you must create the Service before the client Pods come into existence. Je me demandais si il ne serait pas mieux de faire la discovery par DNS https://kubernetes.io/docs/concepts/services-networking/service/#dns (apres ca pourrait etre une env var qui contient le service DNS name, mais ca serait plus safe, et eviterait un ordre dans les deployments et donc une erreur de connectivite)
+
+private/browse/myk8s/current.md (I recommend to still have environment var pointing to service DNS name.) => proposal 1/
++ [link](../Services/service_deep_dive.md#svc-discovery-by-environment-variable-or-dns-within-a-pod)
+
+And for DNS experiments had seen some case did not work (nslookup tutu.com $DNS_SERVICE_NAME):
+https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-docker-bind-dns-use-linux-nameserver-rather-route53/6-use-linux-nameserver.sh#L100
+(did not check if cluster issue  with normal svc osef)
+-->
