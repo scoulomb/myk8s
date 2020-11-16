@@ -431,7 +431,7 @@ Equivalent with our section and k8s doc
 - [Secrets consumed as environment variable and secret update](#secrets-consumed-as-environment-variable-and-secret-update-but-through-a-job)
     - https://kubernetes.io/docs/concepts/configuration/secret/#using-secrets-as-environment-variables
     - and subpart https://kubernetes.io/docs/concepts/configuration/secret/#consuming-secret-values-from-environment-variables
-    - and subpart my pr?
+    - and subpart my pr#25027
 - [We can consume the secret as volumes](#we-can-consume-the-secret-as-volumes)
     - https://kubernetes.io/docs/concepts/configuration/secret/#consuming-secret-values-from-volumes.
     where we have path from env var.
@@ -454,7 +454,7 @@ Environment variable will be updated if the container is restarted by the kubele
 => biy envFrom did not try but pretty sure key are also not updated, and would be present if kubelet is restart 
 => already because when not defined error as seen here
 
-### v3 (pr)
+### v3 (pr initial version)
 title:  Environment variables are not updated after a secret update
 
 If a container already consumed a secret in an environment variable, secret update will not cascade update to the container.
@@ -462,6 +462,135 @@ But if the Kubelet restarts the container, secret update will be available.
 => if pod deleted and restarted it is obvious we have the update  
 ````
 
-<!-- concluded jsut pr k8s website to add 
- when doing pr in my k8s could have one update branch we rebase everytime OK-->
+<!-- concluded;
+when doing pr in my k8s could have one update branch we rebase everytime OK-->
 PR => https://github.com/kubernetes/website/pull/25027
+
+
+## Note on ConfigMap
+
+ConfigMap would work the same way (not tested).
+
+## What would be the alternative to Configmap or secret
+
+Rather than using a ConfigMap or Secret (less true if we encrypt https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/).
+We could use OpenShift template or Helm values in the deployment/deployment config itself (note secret/cm can also be parametrized).
+<!-- and did it -->
+This would be useful for a configuration depending on the environment.
+Rather than having a ConfigMap we could instantiate a template for a specific environment.
+Also a change of configuration would imply a new template load which is less dangerous (evil) than a ConfigMap change.
+
+## Parallel
+
+We had made the parallel with service discovery by [environment variable](../Services/service_deep_dive.md#svc-discovery-by-environment-variable-or-dns-within-a-pod).
+Environment var discovery as ordering and update issue, same as when consuming secret as environment var.
+
+See https://kubernetes.io/docs/concepts/services-networking/service/
+>  Note:
+>  When you have a Pod that needs to access a Service, and you are using the environment variable method to publish the port and cluster IP to the client Pods, you must create the Service before the client Pods come into existence. Otherwise, those client Pods won't have their environment variables populated.
+>  If you only use DNS to discover the cluster IP for a Service, you don't need to worry about this ordering issue.
+
+When using service DNS we can use a combination of environment var and DNS. 
+<! described here originally: /browse/myk8s/current.md --> 
+
+Here are several options:
+- 1/ Template parameter where
+    - A/ the hostname template value can be “service-name” in all namespace, because we rely on the fact services are in same namespace
+    - B/ or specialized per namespace myservice.namespace.svc.
+    <!-- not sure on dot -->
+- 2/ We can eventually hard code a SERVICE_NAME environment var in the template (it is not a template parameter) if we rely on same hypothesis as A
+
+This may be better than hardcoding service name (DNS) in the code.
+When we say service we can also use route.
+
+It would not be a good idea to create environment var with the same name as the one coming from the service name.
+
+````shell script
+ssh sylvain@109.29.148.109 
+sudo minikube start --vm-driver=none
+sudo su 
+kubectl run anotherimage --image=registry.hub.docker.com/scoulomb/docker-doctor:dev
+kubectl expose pod anotherimage --port 8080
+echo 'apiVersion: v1
+kind: Pod
+metadata:
+  name: secret-test-pod
+spec:
+  containers:
+    - name: test-container
+      image: registry.hub.docker.com/scoulomb/docker-doctor:dev
+      env:
+      - name: USERNAME
+        value: scoulomb
+
+  restartPolicy: Always' > mypod.yaml
+kubectl delete -f mypod.yaml
+kubectl apply -f mypod.yaml
+````
+
+
+Output of 
+
+````shell script
+kubectl exec -it  secret-test-pod -- env | grep ANOTHERIMAGE
+````
+
+is 
+
+````shell script
+root@sylvain-hp:/home/sylvain# kubectl exec -it  secret-test-pod -- env | grep ANOTHERIMAGE
+ANOTHERIMAGE_PORT=tcp://10.109.40.234:8080
+ANOTHERIMAGE_PORT_8080_TCP_PROTO=tcp
+ANOTHERIMAGE_PORT_8080_TCP_PORT=8080
+ANOTHERIMAGE_SERVICE_HOST=10.109.40.234
+ANOTHERIMAGE_PORT_8080_TCP=tcp://10.109.40.234:8080
+ANOTHERIMAGE_PORT_8080_TCP_ADDR=10.109.40.234
+ANOTHERIMAGE_SERVICE_PORT=8080
+````
+
+what happens if I override `ANOTHERIMAGE_SERVICE_HOST`
+
+````shell script
+echo 'apiVersion: v1
+kind: Pod
+metadata:
+  name: secret-test-pod
+spec:
+  containers:
+    - name: test-container
+      image: registry.hub.docker.com/scoulomb/docker-doctor:dev
+      env:
+      - name: USERNAME
+        value: scoulomb
+      - name: ANOTHERIMAGE_SERVICE_HOST
+        value: mydnstosvc
+  restartPolicy: Always' > mypod.yaml
+kubectl delete -f mypod.yaml
+kubectl apply -f mypod.yaml
+````
+
+
+
+Output of 
+
+````shell script
+kubectl exec -it  secret-test-pod -- env | grep ANOTHERIMAGE
+````
+
+is 
+
+````shell script
+root@sylvain-hp:/home/sylvain# kubectl exec -it  secret-test-pod -- env | grep ANOTHERIMAGE
+ANOTHERIMAGE_SERVICE_HOST=mydnstosvc
+ANOTHERIMAGE_PORT_8080_TCP=tcp://10.109.40.234:8080
+ANOTHERIMAGE_PORT_8080_TCP_PORT=8080
+ANOTHERIMAGE_PORT_8080_TCP_PROTO=tcp
+ANOTHERIMAGE_PORT_8080_TCP_ADDR=10.109.40.234
+ANOTHERIMAGE_SERVICE_PORT=8080
+ANOTHERIMAGE_PORT=tcp://10.109.40.234:8080
+````
+
+Therefore variable defined directly takes precedence.
+It can be useful to not update teh code is started to use env service discovery and want to switch to option 1 but it is also confusing.
+
+<!-- link secret page and here done STOP CONCLUDE OK -->
