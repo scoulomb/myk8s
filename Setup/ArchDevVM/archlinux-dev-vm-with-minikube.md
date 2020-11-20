@@ -17,10 +17,25 @@ Add `--insecure` to curl. Restart machine and ensure connected to internet.
         * In  `saltstack/salt/common/git/gitconfig`: Change username and mail, and editor
         * In `saltstack/salt/common/fish/fish_variables`: Change user variable and potentially `KUBE_EDITOR` and `EDITOR`
     - You can keep your custom change in a [custom branch](https://github.com/scoulomb/dev_vm/tree/custom):
-    `git checkout -b custom; git add --all;  git ci -m "Custom"; git push --set-upstream origin custom`
-    Then do `git co master`, `./sync_fork.sh` and `git co custom; git rebase master`.
-    
+        * Fist time: `git checkout -b custom; git add --all;  git ci -m "Custom"; git push --set-upstream origin custom`
+        * Update: Then do `git co master`, `./sync_fork.sh` and `git co custom; git rebase master; fix conflict; git rebase --continue; git push --force`.
+    - Check dev_vm repo readme in particular for autostart
 3. Start the VM: `vagrant up; vagrant ssh`
+    - If ssl issue for plugin download, you can comment them, and perform action manually
+    ````shell script
+    # commented: config.disksize.size = '50GB'  for me because
+    # ERROR:  SSL verification error at depth 2: unable to get local issuer certificate (20)
+    # ERROR:  You must add ... your local trusted store
+    # This did not work for me but can work in other situations
+    # https://github.com/hashicorp/vagrant/issues/2671
+    # https://superuser.com/questions/97201/how-to-save-a-remote-server-ssl-certificate-locally-as-a-file
+    # openssl s_client -connect google.com:443 -showcerts
+    ````
+   - If some deps issue (in particular docker the first time), `vagrant halt; vagrant up --provision`
+   - jupyter default password can be changed or requested to dev_vm maintainer. Keep it safe in a keepass.
+   (hash is saved here: https://github.com/Jiehong/dev_vm/blob/master/saltstack/salt/common/jupyter/jupyter_notebook_config.json#L3)
+   - you could start loading your favorite image via docker-compose
+
 
 You could have some package (download) error. 
 In that case re-run the provisioner:
