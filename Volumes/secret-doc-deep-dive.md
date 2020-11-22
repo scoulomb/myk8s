@@ -607,3 +607,343 @@ And for DNS experiments had seen some case did not work (nslookup tutu.com $DNS_
 https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-docker-bind-dns-use-linux-nameserver-rather-route53/6-use-linux-nameserver.sh#L100
 (did not check if cluster issue  with normal svc osef)
 -->
+
+## Questions: can we update environment var when not using a secret?
+ 
+(pr#25027 kbhawkey's comment)
+
+Answer is no.
+
+Unlike environment consumed from secret, we will be forced to restart the container (delete the pod more exactly). Therefore we have no risk to have your environment var not updated.
+
+For instance and as a proof
+
+````
+echo 'apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+spec:
+  containers:
+    - name: test-container
+      image: registry.hub.docker.com/scoulomb/docker-doctor:dev
+      env:
+      - name: USERNAME
+        value: scoulomb
+
+  restartPolicy: Always' > mypod.yaml
+kubectl delete -f mypod.yaml
+kubectl apply -f mypod.yaml
+````
+
+They if you try to edit via kubectl edit you will have 
+
+````
+spec: Forbidden: pod updates may not change fields other than `spec.containers[*].image`, `spec.initContainers[*].image`, `spec.activeDeadlineSeconds` or `spec.tolerations` (only additions to existing tolerations)
+````
+
+
+Same when using the  declarative API which prevents from modifying env var
+If we redefine test-pod
+````
+echo 'apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+spec:
+  containers:
+    - name: test-container
+      image: registry.hub.docker.com/scoulomb/docker-doctor:dev
+      env:
+      - name: USERNAME
+        value: scoulomb2
+
+  restartPolicy: Always' > mypod.yaml
+
+kubectl apply -f mypod.yaml
+````
+
+Output is 
+
+```` 
+root@sylvain-hp:/home/sylvain# kubectl apply -f mypod.yaml
+The Pod "test-pod" is invalid: spec: Forbidden: pod updates may not change fields other than `spec.containers[*].image`, `spec.initContainers[*].image`, `spec.activeDeadlineSeconds` or `spec.tolerations` (only additions to existing tolerations)
+  core.PodSpec{
+        Volumes:        []core.Volume{{Name: "default-token-69j8q", VolumeSource: core.VolumeSource{Secret: &core.SecretVolumeSource{SecretName: "default-token-69j8q", DefaultMode: &420}}}},         InitContainers: nil,
+        Containers: []core.Container{
+                {
+                        ... // 5 identical fields
+                        Ports:   nil,
+                        EnvFrom: nil,
+                        Env: []core.EnvVar{
+                                {
+                                        Name:      "USERNAME",
+-                                       Value:     "scoulomb2",
++                                       Value:     "scoulomb",
+                                        ValueFrom: nil,
+                                },
+                        },
+                        Resources:    core.ResourceRequirements{},
+                        VolumeMounts: []core.VolumeMount{{Name: "default-token-69j8q", ReadOnly: true, MountPath: "/var/run/secrets/kubernetes.io/serviceaccount"}},
+                        ... // 12 identical fields
+                },
+        },
+        EphemeralContainers: nil,
+        RestartPolicy:       "Always",
+        ... // 24 identical fields
+  }
+````
+
+We will have to do 
+
+````
+kubectl delete -f mypod.yaml
+kubectl apply -f mypod.yaml
+````
+
+to have the change.
+This is described here:
+https://github.com/kubernetes/kubernetes/issues/24913
+
+
+## Third party solutions for triggering restarts when ConfigMaps and Secrets change
+ 
+(pr#25027 sftim's comment)
+
+> It'd be nice to mention that there are third party solutions for triggering restarts when ConfigMaps and Secrets change.
+> Maybe even link to https://github.com/stakater/Reloader (which is an example of one of these). Maybe not. It's just an idea.
+
+In section [Secrets consumed as environment variable and secret update](#secrets-consumed-as-environment-variable-and-secret-update).
+
+If a container already consumed a secret in an environment variable, a secret update will not be seen by the container unless it [container] is restarted. [by the Kubelet]
+A pod restarts (which makes the Kubelet starts a new container) will thus also make the update available. 
+
+Note
+- Container restart only involves data plane (Kubelet).
+- Pod restart involves data and control plane (pod controller/custom operator like Reloader).
+
+<!-- Jiehong comment -->
+
+<details>
+  <summary>More details on control plane and data plane</summary>:
+- https://kubernetes.io/docs/concepts/overview/components/
+- https://kccncna20.sched.com/event/ekAL/inside-kubernetes-ingress-dominik-tornow-cisco (slide 90)
+
+Note that container restart ensure we are running on same node, after pod restart, initial pod is terminated and new pod can be scheduled on a different node. 
+</details>
+
+There are third party solutions for triggering Pod restarts when ConfigMaps and Secrets change.
+Reloader (https://github.com/stakater/Reloader) is an example of one of these.
+
+This would enable to ensure only only pods with environment variable from updated secrets are running.
+
+For this we needpod created from a deployment. 
+
+ 
+I will start from this use-case
+
+https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables
+and using: https://github.com/scoulomb/docker-doctor
+
+<!--
+https://github.com/scoulomb/myk8s/blob/master/Master-Kubectl/1-kubectl-create-explained-ressource-derived-from-pod.md#note-on-args-and-command
+-->
+
+````shell script
+sudo su 
+minikube start --vm-driver=none
+
+echo 'apiVersion: v1
+kind: Secret
+metadata:
+  name: mysecret
+type: Opaque
+stringData:
+  USERNAME: admin
+  PASSWORD: admin123' > mysecret.yaml
+
+kubectl apply -f mysecret.yaml
+
+echo 'apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: mydeployment
+  name: mydeployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mydeployment
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: mydeployment
+    spec:  
+      containers:
+        - name: test-container
+          image: registry.hub.docker.com/scoulomb/docker-doctor:dev
+          envFrom:
+          - secretRef:
+              name: mysecret
+      restartPolicy: Always' > mydeployment.yaml
+kubectl delete -f mydeployment.yaml
+kubectl apply -f mydeployment.yaml
+
+kubectl get po | grep mydeployment
+kubectl exec -it  $(kubectl get po | grep mydeployment | awk '{print $1}') -- env | grep admin
+
+````
+
+Output is
+
+````shell script
+root@sylvain-hp:/home/sylvain# kubectl get po | grep mydeployment
+mydeployment-7d5d555755-jwmzx                       1/1     Running            0          3m55s
+root@sylvain-hp:/home/sylvain# kubectl exec -it  $(kubectl get po | grep mydeployment | awk '{print $1}') -- env | grep admin
+USERNAME=admin
+PASSWORD=admin123
+root@sylvain-hp:/home/sylvain#
+````
+
+Let's say I update my secret, what will happen here?
+
+
+````shell script
+echo 'apiVersion: v1
+kind: Secret
+metadata:
+  name: mysecret
+type: Opaque
+stringData:
+  USERNAME: admin
+  PASSWORD: admin456' > mysecret.yaml
+
+kubectl apply -f mysecret.yaml
+````
+
+
+and running 
+
+````shell script
+kubectl get po | grep mydeployment
+kubectl exec -it  $(kubectl get po | grep mydeployment | awk '{print $1}') -- env | grep admin
+
+````
+
+output is 
+
+````shell script
+root@sylvain-hp:/home/sylvain# kubectl get po | grep mydeployment
+mydeployment-7d5d555755-jwmzx                       1/1     Running            0          4m42s
+root@sylvain-hp:/home/sylvain# kubectl exec -it  $(kubectl get po | grep mydeployment | awk '{print $1}') -- env | grep admin
+USERNAME=admin
+PASSWORD=admin123
+root@sylvain-hp:/home/sylvain#
+````
+
+It is not updated.
+
+I will now deploy reloader
+
+````shell script
+kubectl apply -f https://raw.githubusercontent.com/stakater/Reloader/master/deployments/kubernetes/reloader.yaml
+````
+
+
+And update my deployment with annotation `secret.reloader.stakater.com/reload`.
+
+
+````shell script
+echo 'apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    secret.reloader.stakater.com/reload: "mysecret"
+  creationTimestamp: null
+  labels:
+    app: mydeployment
+  name: mydeployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mydeployment
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: mydeployment
+    spec:  
+      containers:
+        - name: test-container
+          image: registry.hub.docker.com/scoulomb/docker-doctor:dev
+          envFrom:
+          - secretRef:
+              name: mysecret
+      restartPolicy: Always' > mydeployment.yaml
+
+kubectl apply -f mydeployment.yaml
+
+kubectl get po | grep mydeployment
+kubectl exec -it  $(kubectl get po | grep mydeployment | awk '{print $1}') -- env | grep admin
+````
+
+output is 
+
+````shell script
+root@sylvain-hp:/home/sylvain# kubectl get po | grep mydeployment
+mydeployment-7d5d555755-jwmzx                       1/1     Running            0          14m
+root@sylvain-hp:/home/sylvain# kubectl exec -it  $(kubectl get po | grep mydeployment | awk '{print $1}') -- env | grep admin
+USERNAME=admin
+PASSWORD=admin123
+````
+
+Note adding annotation does not trigger pod restart.
+
+I will now update the secret
+
+````shell script
+echo 'apiVersion: v1
+kind: Secret
+metadata:
+  name: mysecret
+type: Opaque
+stringData:
+  USERNAME: admin
+  PASSWORD: admin123Stakater' > mysecret.yaml
+
+kubectl apply -f mysecret.yaml
+
+kubectl get po | grep mydeployment
+kubectl exec -it  $(kubectl get po | grep mydeployment | awk '{print $1}') -- env | grep admin
+````
+
+Here we can see that the pod has been restarted! and thus environment var were updated.
+
+````shell script
+root@sylvain-hp:/home/sylvain# kubectl get po | grep mydeployment
+mydeployment-7d5d555755-jwmzx                       0/1     Terminating        0          16m
+mydeployment-7dddbb7fcc-98jv9                       1/1     Running            0          9s
+root@sylvain-hp:/home/sylvain# kubectl exec -it  $(kubectl get po | grep mydeployment | awk '{print $1}') -- env | grep admin
+PASSWORD=admin123Stakater
+USERNAME=admin
+````
+
+There are third party solutions such as [Reloader](https://github.com/stakater/Reloader) for triggering [Pod] restarts when secrets change. [thus container restart by the Kubelet]
+
+## Conclusion:  
+
+If a container already consumed a secret in an environment variable, a secret update will not be seen by the container unless it [container] is restarted. [by the Kubelet]
+
+See [Secrets consumed as environment variable and secret update](#secrets-consumed-as-environment-variable-and-secret-update).
+
+There are third party solutions such as [Reloader](https://github.com/stakater/Reloader) for triggering [Pod] restarts when secrets change. [thus container restart by the Kubelet]
+
+See [Third party solutions for triggering restarts when ConfigMaps and Secrets change](#third-party-solutions-for-triggering-restarts-when-configmaps-and-secrets-change)
+
+See https://github.com/kubernetes/website/pull/25027 OK
