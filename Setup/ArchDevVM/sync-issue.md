@@ -226,13 +226,15 @@ Now it has 2 disadvantages:
 - The sync is unidirectionnal, from host to guest VM. 
 
     - As a consequence we can not use git from VM, therefore I propose to remove git file to speed up the sync.
-Even worse if start creating branch on VM it would be overriden by rsync.
+Even worse if start creating branch on VM it would be overriden by rsync. (can use conemu git bash or Pycharm term)
     - If your script produces output such as text file/html page you have  no direct access. You can start a simple http server to retrieve your results:
     See real case [here](https://github.com/scoulomb/myDNS/blob/master/3-DNS-solution-providers/1-Infoblox/6-Infoblox-error-management/infoblox_api_content_type.md#run-test).
     
     
 - To be synced we need to run `vagrant rsync` or `vagrant rsync-auto`, to watch the folder. See doc:https://www.vagrantup.com/docs/cli/rsync-auto
+An initial sync is done at `vagrant up` time after `halt` (`vagrant halt`, `vagrant up`).
 
+<!-- if not sync is mentionned by default:  /vagrant => C:/Users/scoulombel/dev/dev_vm -->
 
 Note I tried SMB but it requires the publing :https://www.vagrantup.com/docs/synced-folders/smb
 <!-- ssl issue again as for config.disksize.size -->
