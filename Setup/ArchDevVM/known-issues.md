@@ -244,3 +244,36 @@ Some tips to commit from windows. Use credentials manager:https://cmatskas.com/h
 Go to `Control Panel\User Accounts\Credential Manager` and update password in control panel or remove it to be re-prompted again.
 
 <!-- this file concluded include link other repo suffit --> 
+
+
+## Default Python version change to 3.9
+
+````shell script
+➤ pipenv run python run.py --verbose --no-json-logs
+Warning: Python 3.8 was not found on your system...
+Neither 'pyenv' nor 'asdf' could be found to install Python.
+You can specify specific versions of Python with:
+$ pipenv --python path/to/python
+````
+
+Edit pipfile (and do not forget to align Dockerfile)
+
+````shell script
+[requires]
+python_version = "3.9"
+````
+
+Then do 
+
+````shell script
+vagrant rsync
+````
+
+Followed by
+
+````shell script
+pipenv update
+pipenv run python run.py --verbose --no-json-logs
+````
+
+<!-- this happpened after reprovisionned the machine -->
