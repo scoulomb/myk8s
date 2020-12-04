@@ -159,3 +159,5 @@ All behavior described here starts when container is started so after the pull.
 <!-- sre-setup, TestV2.md -->
 
 <!-- => https://github.com/kubernetes/website/pull/25027, OK reviewed and CCL finally -->
+
+If liveness  and startup probe IMO initial delay seconds makes less sense. OK.
