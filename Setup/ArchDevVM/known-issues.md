@@ -2,7 +2,7 @@
 
 When reloading last VM version we had following issues when working on development tasks.
 
-## Running code from pipenv 
+## Issue 1: Running code from pipenv 
 
 [solved]
 
@@ -32,8 +32,9 @@ We could use poetry instead of pipenv, but there is low probability it would hav
 <!-- to check if issue global or local we can think to use the CI -->
 
 
-## Running code from Docker image
+## Issue 2: Running code from Docker image
 
+[workaround]
 
 ### Issue
 
@@ -46,7 +47,7 @@ We had that issue: https://stackoverflow.com/questions/12338233/shell-init-issue
 
 ````shell script
 ➤ docker build .
-error checking context: 'lstat /home/vagrant/dev/my-automation/dns_automation/dictionary_filter/__init__.py: interrupted system call'.
+error checking context: 'lstat /home/vagrant/dev/my-automation/myproj_automation/dictionary_filter/__init__.py: interrupted system call'.
 [11:14][master]⚡? ~/dev/my-automation
 ➤ shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
 error: getcwd() failed with errno 2/No such file or directory
@@ -63,7 +64,7 @@ logout/login
 But still issue:
 
 ````shell script
-error checking context: 'lstat /home/vagrant/dev/my-automation/non_regression/src/test/java/infoblox_api_direct_call/create_dnsview.feature: interrupted system call'.
+error checking context: 'lstat /home/vagrant/dev/my-automation/non_regression/src/test/java/infoblox_api_direct_call/create_myprojview.feature: interrupted system call'.
 ```` 
 
 This is due to the fact Windows is doing file manipulation in the vagrant sync folder causing the issue.
@@ -245,8 +246,19 @@ Go to `Control Panel\User Accounts\Credential Manager` and update password in co
 
 <!-- this file concluded include link other repo suffit --> 
 
+**I will use workaround 4 for remaining of this file**
 
-## Default Python version change to 3.9
+**Tips**: as sync is one way VM/Guest, if you need to get output files or view file (like html test resport), you can start a Python server:
+
+````shell script
+python -m http.server 8080
+````
+
+and go browser at [localhost:9080](localhost:9080).
+
+## Issue 3: Default Python version change to 3.9
+
+Python 3.9 is now the default in new Archlinux release.
 
 ````shell script
 ➤ pipenv run python run.py --verbose --no-json-logs
@@ -271,9 +283,106 @@ vagrant rsync
 
 Followed by
 
+
 ````shell script
 pipenv update
 pipenv run python run.py --verbose --no-json-logs
 ````
 
-<!-- this happpened after reprovisionned the machine -->
+<!-- this hampered after reprovisionned the machine -->
+
+This `pipenv update` requires to install python 3.9 on windows) as one way rsync with workaround 4.
+And then edit your Dockerfile.
+
+````shell script
+FROM python:3.9.0-slim
+````
+
+````shell script
+vagrant rsync
+docker-compose up --build # yse --build to force rebuild
+````
+
+We can set a version 
+
+````shell script
+➤ docker inspect ( docker images | grep python | grep 3.9.0-slim | awk '{print $3}') | head -n 10
+[
+    {
+        "Id": "sha256:338d84dcd01719111dd8d1f650be9d6b5df042bf4a810921c7213d98913cbe05",
+        "RepoTags": [
+            "python:3.9.0-slim"
+        ],
+        "RepoDigests": [
+            "python@sha256:de8d4a338fb815509de2046cea4ff48959c84aabc1b65cb41c5e2da1ac599b04"
+        ],
+        "Parent": "",
+````
+
+Thus we use the `RepoDigests` and not the `Id`
+
+````shell script
+FROM python:3.9.0-slim@sha256:de8d4a338fb815509de2046cea4ff48959c84aabc1b65cb41c5e2da1ac599b04
+````
+
+And then
+
+````shell script
+vagrant rsync
+docker-compose up --build # use --build to force rebuild
+````
+
+Note issue with pylint
+
+````shell script
+disable=
+[...]
+# Python 3.9 issue: https://github.com/PyCQA/pylint/issues/3882, to be removed when 3882 delivered
+# Tracked by: https://rndwww.nce.amadeus.net/agile/browse/NWAUTO-957
+    unsubscriptable-object
+````
+
+
+<!-- see DNS pr#86 -->
+
+## Other running code + non-regression 
+
+````shell script
+docker-compose up
+````
+
+### Issue A:  Some permissions issue with workaround 4
+
+We can have this error:
+
+````shell script
+my-non-regression_1     | [ERROR] Failed to execute goal org.apache.maven.plugins:maven-resources-plugin:2.6:testResources (default-testResources) on project myprok_Non_Regression: /working_dir/target/test-classes/myproj/mytest.feature (Permission denied) -> [Help 1]
+````
+
+To fix the issue do 
+
+````shell script
+docker rmi myproj-non-regression --force
+rm -rf ~/dev/my-automation
+vagrant rsync
+chmod -R 777 ~/dev/myautomation
+sudo systemd-resolve --flush-caches
+````
+
+<!--
+vpn auth failure change exp pwd
+-->
+
+### Issue B
+
+Socket timeout in non reg 
+
+````shell script
+com.intuit.karate.exception.KarateException: mysupertest.feature:100 - 
+create_something.feature:18 - 
+java.net.SocketTimeoutException: Read timed out
+````
+
+Best fix is to change the device.
+
+<!-- see DNS PR#87 -->
