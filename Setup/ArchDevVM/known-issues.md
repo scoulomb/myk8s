@@ -1,6 +1,7 @@
 # Archlinux DEV VM known issue
 
 When reloading last VM version we had following issues when working on development tasks.
+(docker, docker-compose, python base image with pipenv as python package manager).
 
 ## Issue 1: Running code from pipenv 
 
@@ -369,6 +370,7 @@ chmod -R 777 ~/dev/myautomation
 sudo systemd-resolve --flush-caches
 ````
 
+<!-- I suspect this to happen when doing rm -rf non_regression/target/ --> 
 <!--
 vpn auth failure change exp pwd
 -->
@@ -383,6 +385,13 @@ create_something.feature:18 -
 java.net.SocketTimeoutException: Read timed out
 ````
 
-Best fix is to change the device.
-
+Best fix is to change the device
 <!-- see DNS PR#87 -->
+and device could not not support big workload so we (this has great impact) 
+- increase connection timeout (karate config file) and read timeout (see https://github.com/scoulomb/http-over-socket, match ok)
+- and reduce number of test in parallel (had to go 1) (java file).
+It fixed most of the run but some still failing.
+
+We could make workload tests via: /repos/stress_test.
+<!-- see DNS PR#88 -->
+
