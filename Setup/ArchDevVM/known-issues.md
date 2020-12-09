@@ -392,9 +392,11 @@ and device could not not support big workload so we (this has great impact)
 - and reduce number of test in parallel (had to go 1) (java file).
 It fixed most of the run but some still failing.
 
-We can also increase connetion and read timeout when request library:
+We can also increase connection and read timeout when request library:
 https://stackoverflow.com/questions/24784665/python-requests-module-connection-timeout (tuple or int).
     
+Also if we have several cronjob running nightly of different phase at same time, and targeting same device.
+It could cause similar issues. We could add template parameter for cron pattern and spread in time.
 
 We could make workload tests via: /repos/stress_test.
 <!-- see DNS PR#88 -->
