@@ -397,7 +397,8 @@ https://stackoverflow.com/questions/24784665/python-requests-module-connection-t
     
 Also if we have several cronjob running nightly of different phase at same time, and targeting same device.
 It could cause similar issues. We could add template parameter for cron pattern and spread in time.
+-> it was not necessary 
 
-We could make workload tests via: /repos/stress_test.
+We could make workload tests on device via: /repos/stress_test.
 <!-- see DNS PR#88 -->
 
