@@ -424,48 +424,22 @@ Password **is** updated without container restart.
 
 <!-- do not perform update on nr code, kubernetes -->
 
-Here we had seen different consumption mode: https://github.com/scoulomb/myk8s/blob/master/Volumes/volume4question.md#4-configmap-consumption
-
+Here we had seen different consumption modes: https://github.com/scoulomb/myk8s/blob/master/Volumes/volume4question.md#4-configmap-consumption
 
 Equivalent with our section and k8s doc
 - [Secrets consumed as environment variable and secret update](#secrets-consumed-as-environment-variable-and-secret-update-but-through-a-job)
     - https://kubernetes.io/docs/concepts/configuration/secret/#using-secrets-as-environment-variables
     - and subpart https://kubernetes.io/docs/concepts/configuration/secret/#consuming-secret-values-from-environment-variables
-    - and subpart my pr#25027
+    - and subpart https://kubernetes.io/docs/concepts/configuration/secret/#environment-variables-are-not-updated-after-a-secret-update s
+    (section added by my PR: https://github.com/kubernetes/website/pull/25027)
 - [We can consume the secret as volumes](#we-can-consume-the-secret-as-volumes)
     - https://kubernetes.io/docs/concepts/configuration/secret/#consuming-secret-values-from-volumes.
     where we have path from env var.
     and show that  https://kubernetes.io/docs/concepts/configuration/secret/#mounted-secrets-are-updated-automatically
-    
-For env var we could say in a PR
-````shell script
 
-### v1
-title: Consumed secret values from environment variables are not updated automatically
-When a secret value currently consumed from environment variable is updated, container's environment variable will not be updated.
-Environment variable will be updated if the container is restarted by the kubelet.
+## PR 25027
 
-### v2
-title: Consumed secret values from environment variables are not updated automatically
-If a container already consumed a secret value from environment variable, a secret update will not cascade update to the  containrer.    
-
-Environment variable will be updated if the container is restarted by the kubelet.
-
-=> biy envFrom did not try but pretty sure key are also not updated, and would be present if kubelet is restart 
-=> already because when not defined error as seen here
-
-### v3 (pr initial version)
-title:  Environment variables are not updated after a secret update
-
-If a container already consumed a secret in an environment variable, secret update will not cascade update to the container.
-But if the Kubelet restarts the container, secret update will be available.
-=> if pod deleted and restarted it is obvious we have the update  
-````
-
-<!-- concluded;
-when doing pr in my k8s could have one update branch we rebase everytime OK-->
-PR => https://github.com/kubernetes/website/pull/25027
-
+See doc [here](./pr-25027-and-related.md).
 
 ## Note on ConfigMap
 
@@ -608,9 +582,27 @@ https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-app
 (did not check if cluster issue  with normal svc osef)
 -->
 
-## Questions: can we update environment var when not using a secret?
- 
-(pr#25027 kbhawkey's comment)
+## Can we update environment var when not using a secret?
+
+See kbhawkey's comment in: https://github.com/kubernetes/website/pull/25027
+
+<!--
+quoting  kbhawkey comment
+
+````
+My understanding of this sentence:
+If an environment variable changes, a container needs to be restarted to read the updated environment variable.
+
+If an environment variable containing a secret is modified, a container must be restarted to use the updated secret.
+````
+
+Thanks for the comment.
+From my understanding in the first case: 
+> If an environment variable changes, a container needs to be restarted to read the updated environment variable.
+
+and unlike the second case. 
+You will be forced to restart the container (delete the pod more exactly). Therefore you have no risk to have your environment var not updated.
+-->
 
 Answer is no.
 
@@ -705,10 +697,12 @@ to have the change.
 This is described here:
 https://github.com/kubernetes/kubernetes/issues/24913
 
+A deployment would work same issue raised there: https://stackoverflow.com/questions/65225688/why-kubernetes-rest-api-is-imperative
+If do PUT twice on pod get similar error and working with a deployment.
 
 ## Third party solutions for triggering restarts when ConfigMaps and Secrets change
  
-(pr#25027 sftim's comment)
+See sftim's comment in: https://github.com/kubernetes/website/pull/25027
 
 > It'd be nice to mention that there are third party solutions for triggering restarts when ConfigMaps and Secrets change.
 > Maybe even link to https://github.com/stakater/Reloader (which is an example of one of these). Maybe not. It's just an idea.
