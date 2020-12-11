@@ -928,16 +928,212 @@ PASSWORD=admin123Stakater
 USERNAME=admin
 ````
 
-There are third party solutions such as [Reloader](https://github.com/stakater/Reloader) for triggering [Pod] restarts when secrets change. [thus container restart by the Kubelet]
+There are third party solutions (*) for triggering [Pod] restarts when secrets change. [thus container restart by the Kubelet]
+* such as [Reloader](https://github.com/stakater/Reloader) 
 
 ## Conclusion:  
+<!-- ok -->
 
-If a container already consumed a secret in an environment variable, a secret update will not be seen by the container unless it [container] is restarted. [by the Kubelet]
+If a container already consumes a Secret in an environment variable, a Secret update will not be seen by the container unless it [container] is restarted. [by the Kubelet]
 
 See [Secrets consumed as environment variable and secret update](#secrets-consumed-as-environment-variable-and-secret-update).
 
-There are third party solutions such as [Reloader](https://github.com/stakater/Reloader) for triggering [Pod] restarts when secrets change. [thus container restart by the Kubelet]
+There are third party solutions (*) for triggering [Pod] restarts when secrets change. [thus container restart by the Kubelet]
+* such as [Reloader](https://github.com/stakater/Reloader) 
 
 See [Third party solutions for triggering restarts when ConfigMaps and Secrets change](#third-party-solutions-for-triggering-restarts-when-configmaps-and-secrets-change)
 
-See https://github.com/kubernetes/website/pull/25027 OK
+See https://github.com/kubernetes/website/pull/25027 <!-- UPDATED
+Note link with ingress: control and data plane OK STOP YES -->
+
+
+## Side note on declarative API 
+<!-- ok -->
+
+<!-- a.ssre pr#87 --> 
+
+````shell script
+# cat mysecret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysecret
+type: Opaque
+stringData:
+  USERNAME: admin
+  PASSWORD: admin123Stakater
+# kubectl delete -f mysecret.yaml
+secret "mysecret" deleted
+# kubectl create -f mysecret.yaml
+secret/mysecret created
+# kubectl create -f mysecret.yaml
+Error from server (AlreadyExists): error when creating "mysecret.yaml": secrets "mysecret" already exists
+# => second time we update it is failing it is imperative without idempotency (same content fails)
+
+# kubectl delete -f mysecret.yaml
+secret "mysecret" deleted
+# kubectl apply -f mysecret.yaml
+secret/mysecret created
+# kubectl apply -f mysecret.yaml
+secret/mysecret configured
+# vim mysecret.yaml
+# cat mysecret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysecret
+type: Opaque
+stringData:
+  USERNAME: admin
+  PASSWORD: admin456
+# kubectl apply -f mysecret.yaml
+secret/mysecret configured
+# => if using apply it always works => declarative
+````
+
+
+## Side note on service account 
+
+<!-- ok, not to be redone, all clear -->
+<!-- see All work (in part d) linked with tasks: https://raw.githubusercontent.com/scoulomb/myDNS/master/2-advanced-bind/5-real-own-dns-application/6-use-linux-nameserver-part-d-other-applications.md -->
+
+**Deleting a secret attached to a service account can invalidate service account token**
+
+<!-- what we do test manual script or automated jenkins deployment,
+ in my case I removed secret to test manual deployment (to do same as jenkins automated deployment) using user credentials
+ and it made fail automated deployment which is using token, OK -->
+
+Assume you created a service account and use the permanent token to login (often the token is used by another automation like a Jenkins job)
+<!-- sre-setup/1-Access-Control/1-create_service_account_and_related_rolebinding.md --> 
+To get the credentials you would do:
+
+````shell script
+export TOKEN=(oc serviceaccounts get-token my-automation-robotic-user)
+````
+
+and then perform a login 
+
+````shell script
+echo $TOKEN 
+oc login --token=$TOKEN
+````
+
+you would also find this token in your `kubeconfig` at `cat ~/.kube/config`.
+
+We had seen that when using a service account, a token is attached to it and mounted as volume in the pod.
+See section on [service account](../Security/2-service-account.md#use-a-specific-service-account).
+
+
+We can find the same token previously got by doing:
+
+````shell script
+oc get secrets my-automation-robotic-user-token-ctb7l -o jsonpath='{.data.token}' | base64 --decode
+
+oc serviceaccounts get-token my-automation-robotic-user > via-get-token.txt
+
+set secret_name (oc get sa my-automation-robotic-user -o jsonpath='{.secrets[1].name}')
+echo $secret_name
+oc get secrets  $secret_name -o jsonpath='{.data.token}' | base64 --decode > via-secret.txt
+
+diff via-get-token.txt  via-secret.txt
+````
+
+Note when using secret we need to decode in base64. It is mentioned in this article:
+https://medium.com/better-programming/k8s-tips-using-a-serviceaccount-801c433d0023  
+
+And that diff does not show any difference between the 2 methods.
+ 
+Now what happens if we delete the secret?
+
+````shell script
+oc delete secret $secret_name
+````
+
+After secret deletion, it has been recreated by "Token controller"
+
+````shell script
+➤ oc get secrets | grep automation-robotic-user-token
+my-automation-robotic-user-token-fgv24       kubernetes.io/service-account-token   4         54s
+
+➤ oc get sa my-automation-robotic-user -o jsonpath='{.secrets[1].name}'
+my-automation-robotic-user-token-fgv24⏎
+````
+
+See here: https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/#token-controller)
+
+But it has a different token 
+
+````shell script
+oc serviceaccounts get-token my-automation-robotic-user > new-via-get-token.txt
+
+set secret_name (oc get sa my-automation-robotic-user -o jsonpath='{.secrets[1].name}')
+echo $secret_name
+oc get secrets  $secret_name -o jsonpath='{.data.token}' | base64 --decode > new-via-get-secret.txt
+````
+
+output 
+
+````shell script
+diff new-via-get-token.txt  new-via-get-secret.txt
+diff via-get-token.txt  new-via-get-token.txt
+````
+
+is 
+
+
+````shell script
+➤ diff new-via-get-token.txt  new-via-get-secret.txt
+➤ diff via-get-token.txt  new-via-get-token.txt
+1c1
+< eyJhb[...]c1ZLB-CyH9fJy9S00g
+---
+> eyJhb[...]2PfPp9_oY4PHTOxkoGOSw629w
+\ No newline at end of file
+````
+
+As a consequence deleting the secrets attached to a service account invalidates the token.
+
+It is mentioned between the lines in Kubernetes documentation:
+https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/#to-delete-invalidate-a-serviceaccount-token-secret
+
+But it is hidden in openshift via the `oc login` and `oc serviceaccounts get-token`.
+
+Actually `oc login` configures the Kubeconfig with the provided token. 
+And `oc serviceaccounts get-token` retrieves the token from the secrets which is invalidated after a secret deletion.
+
+It explain why after secret deletion we can not do 
+
+````shell script
+set TOKEN (cat via-get-token.txt)
+oc login --token=$TOKEN
+````
+
+as output will be 
+
+````shell script
+➤ oc login --token=$TOKEN
+error: The token provided is invalid or expired.
+````
+
+but instead we should use new token 
+
+````shell script
+set TOKEN (cat new-via-get-token.txt)
+oc login --token=$TOKEN
+````
+
+where output will be
+
+````shell script
+➤ oc login --token=$TOKEN
+Logged into ...
+````
+
+So deleting a secret attached to a service account can invalidate service account token.
+The link between `oc login --token` and secrets seems not trivial, but we hope this explanation made it clear.
+Ths could imply to delete your related Jenkins job.
+Be careful with it.
+
+<!-- to get credentials, here not a sec from sa
+oc project ...; oc get secrets my-secret-variables -o jsonpath='{.data.PASSWORD}{"\n"}' | base64 -d
+-->
