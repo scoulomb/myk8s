@@ -187,6 +187,129 @@ STEP 3: COMMIT
 681c60f5d2491dba04fd2058bdf8b0fa1e8ac83eea7b84bf05e1638e2207635f
 ````
 
+See [container engine and podman produces OCI compliant image](../../container-engine/container-engine.md).
+
+#### How to fix the issue in ArchLinux?
+
+<!-- add 2020-01-11 -->
+ 
+<!-- here it was error with real automation
+````shell script
+ERRO[0000] container_linux.go:370: starting container process caused: exec: "/bin/sh": stat /bin/sh: no such file or directory
+````
+-->
+
+From https://github.com/moby/moby/issues/33266
+> The solution was to do a Factory Reset in Docker. I had to remember to re-check the exposure of port 2375 over TLS.
+
+Pruning was not sufficient. See:
+- https://docs.docker.com/engine/reference/commandline/system_prune/
+
+````shell script
+docker system prune --all
+````
+To fix the error we have to remove docker
+
+Cf. https://stackoverflow.com/questions/62173586/docker-where-is-reset-to-factory-defaults-on-linux
+
+````shell script
+# reset docker
+sudo pacman -R docker-compose
+sudo pacman -R docker
+sudo rm -rf /var/lib/docke
+````
+and reinstall it
+
+````shell script
+vagrant up --provision
+````
+
+Then we another error:
+
+````shell script
+➤ cat yop.Dockerfile
+FROM scoulomb/docker-doctor:dev
+
+RUN ["/bin/echo", "hello"]
+ENTRYPOINT ["/bin/echo", "hello"]
+[20:20] ~
+➤ sudo podman build -f yop.Dockerfile -t test
+STEP 1: FROM scoulomb/docker-doctor:dev
+Error: error creating build container: short-name "scoulomb/docker-doctor:dev" did not resolve to an alias and no unqualified-search registries are defined in "/etc/containers/registries.conf"
+````
+
+You may also want to login to docker 
+
+````shell script
+podman login docker.io
+````
+
+But the actual fix is to specify the path 
+
+````shell script
+➤ cat yop.Dockerfile
+FROM docker.io/scoulomb/docker-doctor:dev
+
+RUN ["/bin/echo", "hello"]
+ENTRYPOINT ["/bin/echo", "hello"]
+[20:21] ~
+➤ sudo podman build -f yop.Dockerfile -t test
+STEP 1: FROM docker.io/scoulomb/docker-doctor:dev
+STEP 2: RUN ["/bin/echo", "hello"]
+--> Using cache f0ad260d9eb241d9b43ecf461e81beede485b12f6ce8447591afa465ebaf1bd4
+--> f0ad260d9eb
+STEP 3: ENTRYPOINT ["/bin/echo", "hello"]
+--> Using cache 16794034f37147698d62881ab2e817babf6a4c2daf6219dd2e5ea3384b9e8751
+STEP 4: COMMIT test
+--> 16794034f37
+16794034f37147698d62881ab2e817babf6a4c2daf6219dd2e5ea3384b9e8751
+````
+
+For Python it would be `FROM docker.io/python:3.9.0`.
+
+Then run 
+
+````shell script
+➤ sudo podman run test
+hello
+````
+
+If you have this error
+
+````shell script
+Error: error creating build container: Error committing the finished image: error adding layer with blob "sha256:756975cb9c7e7933d824af9319b512dd72a50894232761d06ef3be59981df838": Error processing tar file(exit status 1): potentially insufficient UIDs or GIDs available in user namespace (requested 0:42 for /etc/gshadow): Check /etc/subuid and /etc/subgid: lchown /etc/gshadow: invalid argument
+````
+
+Do instruction from: https://serverfault.com/questions/738773/docker-failed-to-add-the-pair-interfaces-operation-not-supported
+> In my case, the error appears every time I update my Linux kernel. It disappears when I restart the computer.
+> I am using Arch Linux
+
+<!-- in fact did it with real auto but global error -->
+
+Finally note we can not use sha (for sha, see [Issue 3](#issue-3-default-python-version-change-to-39))
+Otherwise we have 
+
+````shell script
+➤ cat yop.Dockerfile
+FROM docker.io/scoulomb/docker-doctor:dev@sha256:2b4763a7d40a8314397d70fe7de788677a9ebaad82c37c9963ca8effa415f787
+
+RUN ["/bin/echo", "hello"]
+ENTRYPOINT ["/bin/echo", "hello"]
+[20:15] ~
+➤ sudo podman build -f yop.Dockerfile -t test
+STEP 1: FROM docker.io/scoulomb/docker-doctor:dev@sha256:2b4763a7d40a8314397d70fe7de788677a9ebaad82c37c9963ca8effa415f787
+Error: error creating build container: Docker references with both a tag and digest are currently not supported
+````
+
+<!-- 
+dns auto worked but then pipenv issue (user) when run 
+ModuleNotFoundError: No module named 'connexion'
+could run it with docker via a local registry, not tried: https://www.australtech.net/running-a-local-docker-registry/
+(and also done Setup/ClusterSetup/LocalRegistrySetup)
+made both my image and dns auto in parallel ==> OK 
+STOP HERE for NOW OK STOP
+-->
+
 #### Workaround 4: use rsync instead of nfs
 
 In vagrant file change commented line to 
