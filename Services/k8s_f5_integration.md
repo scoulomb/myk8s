@@ -25,19 +25,22 @@ This is documented in [F5 cloud docs](https://clouddocs.f5.com/containers/v2/kub
 
 #### F5 NodePort Mode
 
-This is F5 implementation looks like proposal here: [service_deep_dive](./service_deep_dive.md#Node-port-alternative).
-
 The NodePort mode uses 2-tier load balancing:
 1. The BIG-IP Platform load balances requests to Nodes (kube-proxy).
 2. Nodes (kube-proxy) load balance requests to Pods.
 
-![traefik 2](images/k8s_nodeport.png)
+![F5 NodePort](images/k8s_nodeport.png)
 Image from [F5 cloud doc website](https://clouddocs.f5.com/containers/v2/kubernetes/kctlr-modes.html)
+
+Note following limitations:
+> The Kubernetes Services you manage must use type: NodePort,
+> The BIG-IP system can’t load balance directly to Pods,
 
 #### F5 cluster mode
 
 In that case F5 is sending request to POD directly. 
 It is mentioned we  `can use any type of Kubernetes Services.`
+It actually replace k8s service engine.
 
 ![traefik 2](images/k8s_cluster.png)
 Image from [F5 cloud doc website](https://clouddocs.f5.com/containers/v2/kubernetes/kctlr-modes.html)
@@ -126,21 +129,30 @@ spec:
 ````
 
 This is the same as Traefik except that each ingress resource has its own virtual ip (then routing performed to endpoint using vhost)
-The main difference with Traefik is that we expose directly the VIP, so we do not need to load balance on k8s node, and the use Traefkik.
-So we removed another level of indirection here [service_deep_dive](./service_deep_dive.md#Ingress): the step 2.
+The main difference with Traefik is that we expose directly the VIP.
+The load balancer is merged with the ingress when using Cluster Mode.
+So we removed another level of indirection here [service_deep_dive](./service_deep_dive.md#when-using-ingress): the step 2, 3 and 4 are merged.
+So with F5 cluster mode no indirection at all is done! 
 
 We are doing host and name based routing: https://clouddocs.f5.com/containers/v2/kubernetes/kctlr-k8s-ingress-ctlr.html#set-a-default-shared-ip-address
 More details on [host/named based routing](https://devcentral.f5.com/s/articles/the-three-http-routing-patterns-you-should-know-30764 )
-
-So here accumulated with F5 cluster mode no indirection at all is done! 
 
 Aligned with second part of the answer in [SO](https://stackoverflow.com/questions/60031377/load-balancing-in-front-of-traefik-edge-router).
 
 As for Traefik `k8s big-ip controller` is able to perform only [`name based virtual hosting`](https://clouddocs.f5.com/containers/v2/kubernetes/kctlr-ingress.html#name-based-virtual-hosting).
 
+### Making a mapping
+
+- Ingress with NodePort mode: [<=> ingress seen here](service_deep_dive.md#when-using-ingress) WITHOUT Alternative (2+3)
+- Ingress with Cluster mode:  [<=> ingress seen here](service_deep_dive.md#when-using-ingress) WITH Alternative (2+3)
+
+- CM with NodePort mode: [<=> Node seen here](service_deep_dive.md#when-using-nodeport) 
+- CM with Cluster mode:  equivalent to any internal service in [service deep_dive](service_deep_dive.md)
+
 ## OpenShift integration
 
 F5 can replace [OpenShift route/HA proxy](https://docs.okd.io/latest/architecture/networking/assembly_available_router_plugins.html#architecture-haproxy-router) as documented [in F5 doc](https://clouddocs.f5.com/containers/v2/openshift/#openshift-routes).
+So equivalent to Ingress.
 
 This the F5 BIG-IP Controller for Kubernetes.  We have a  mapping between OpenShift operations and F5.
 
@@ -173,8 +185,7 @@ We can map following concepts:
 My interpretation is that it the same as [F5 ingress](#F5-ingress).
 - NodePort: [service_deep_dive](./service_deep_dive.md#NodePort),
 >  This could be an Ingress Controller.
-> My interpretation of that sentence is what we did [here](./service_deep_dive.md#Create-deployments-and-services), where one of the svc was a NodePort.
-
+See [service deep dive/ingress/step 3](service_deep_dive.md#when-using-ingress)
 
 ## Note on deprecated [F5 big ip router plugin](https://docs.okd.io/latest/architecture/networking/assembly_available_router_plugins.html#architecture-f5-big-ip)
 

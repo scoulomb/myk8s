@@ -35,7 +35,7 @@ minikube start --container-runtime=docker
 Other options available are:
 
 - containerd
--  cri-o
+- cri-o
 
 Same run time as official container runtime described here: https://kubernetes.io/docs/setup/production-environment/container-runtimes/
 
@@ -62,9 +62,9 @@ If I summarized
 
 ````shell script
 Docker ---use---> containerd --use---> runc
-CRI-O  ---use--->                      runc
-Podman ---use--->                      runc
-LXD    ---use--->                      LXC
+CRI-O  ---use------------------------> runc
+Podman ---use------------------------> runc
+LXD    ---use------------------------> LXC
 ````
 
 
@@ -78,15 +78,17 @@ They will allow only
 Why?
 From k8s blog: https://kubernetes.io/blog/2020/12/02/dont-panic-kubernetes-and-docker/
 
-| Container engine                 | Produces OCI compliant | is CRI-O              | 
+| Container engine                 | Produces OCI compliant | is CRI              | 
 |----------------------------------|------------------------|----------------------|
-| Docker -> contenaird             | YES                    | YES                  |
-| Shim -> Docker -> containerd     | YES                    | YES                  |
-| containerd                       | YES                    | YES                  |
-| CRI-O                            | YES                    | YES                  |
+| (Shim ->) Docker -> containerd   | YES                    | YES                  |
+| (Shim ->) containerd             | YES                    | YES                  |
+| (Shim ->) CRI-O                  | YES                    | YES                  |
 | Podman                           | YES                    | YES                  |
 
-To make Docker CRI-O (which is need to work with Kubernetes), they have to maintain shim.
+
+See what it means to be CRI: https://github.com/kubernetes/community/blob/master/contributors/devel/sig-node/container-runtime-interface.md
+
+To make Docker CRI-O (which is need to work with Kubernetes), they have to maintain docker shim.
 Whereas they just need the docker engine part which is contenaird.
 
 To avoid to maintain shim, they will only allow:
@@ -94,10 +96,14 @@ To avoid to maintain shim, they will only allow:
 - containerd
 -  cri-o
 
+
 Quoting blog:
 > Docker isn’t compliant with CRI, the Container Runtime Interface. If it were, we wouldn’t need the shim, and this wouldn’t be a thing. But it’s not the end of the world, and you don’t need to panic -- you just need to change your container runtime from Docker to another supported container runtime.
 
 But as Docker produce OCI compliant image, those engine (contenaird, cri-o) will be able to run Docker image.
+
+contenaird and cri-o seems to have a shim from [Services\appendix_internals.md](../Services/appendix_internals.md#what-happens-when-i-do-kubectl-exec).
+but they seem to embed it directly.
 
 >  The image that Docker produces isn’t really a Docker-specific image -- it’s an OCI (Open Container Initiative) image. Any OCI-compliant image, regardless of the tool you use to build it, will look the same to Kubernetes. Both containerd and CRI-O know how to pull those images and run them. This is why we have a standard for what containers should look like.
 
@@ -168,7 +174,8 @@ FROM ubuntu
 CMD ["echo", "hello"]
 ````
 
-Interoperable registry, this shows OCI compliance,
+Interoperable registry, this shows OCI compliance.
+<!-- ok not using docker-doctor -->
 
 
 Also from: https://developers.redhat.com/blog/2019/02/21/podman-and-buildah-for-docker-users/
@@ -177,7 +184,7 @@ This is because Podman’s local repository is in /var/lib/containers instead of
 
 We have in Podman the concept of pod (with several container, like side-car)!
 
-
+See [here more details on container engine](../Services/appendix_internals.md).
 
 
 

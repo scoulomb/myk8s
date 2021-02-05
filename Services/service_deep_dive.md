@@ -37,7 +37,7 @@ vagrant@k8sMaster:~$  curl --silent http://$POD_IP | grep "<title>"
 
 ## Use service
 
-Rather than targetting pod directy we can use service
+Rather than targeting pod directly we can use service
 Pod is linked to a service via a label in selector as it can be shown here:
 
 ```
@@ -75,7 +75,7 @@ vagrant@k8sMaster:~$ curl --silent http://$CLUSTER_IP | grep "<title>"
 Endpoint controller created corresponding endpoints:
 https://github.com/kubernetes/kubernetes/blob/master/pkg/controller/endpoint/endpoints_controller.go#L200
 
-This is possible because from [k8s doc](from: https://kubernetes.io/docs/concepts/services-networking/service/)
+This is possible because from [k8s doc](https://kubernetes.io/docs/concepts/services-networking/service/)
 > The controller for the Service selector continuously scans for Pods that match its selector, and then POSTs any updates to an Endpoint object also named “my-service”.
 
 ```
@@ -261,6 +261,8 @@ So different pod could use a different port (not tested)
 
 ## Other type of service
 
+Service we have seen above is `ClusterIP`.
+
 ### NodePort
 
 NodePort is a simple connection from a high-port routed to a ClusterIP 
@@ -321,6 +323,7 @@ $ curl --silent 127.0.0.1:32000 | grep  "<title>"
 <title>Welcome to nginx!</title>
 ````
 ### LoadBalancer
+
 Doc: https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/
 
 Creating a LoadBalancer service generates a NodePort.
@@ -345,6 +348,65 @@ vagrant@k8sMaster:~$ curl --silent 10.111.52.75 | grep "<title>"
 <title>Welcome to nginx!</title>
 
 ````
+
+It will load balancer on cluster nodes.
+There will be two pool members associated with the load balancer: 
+These are the IP addresses of the nodes in the Kubernetes cluster.
+
+We could setup load balancer manually.
+
+### Note on load balancer svc
+
+<!-- discussion dl jum2020 -->
+
+````shell script
+➤ k create service loadbalancer my-lbs --tcp=5678:8080                                                                                                                 
+service/my-lbs created
+[11:27] ~
+➤ k get svc my-lbs                                                                                                                                                         
+NAME     TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+my-lbs   LoadBalancer   10.110.153.149   <pending>     5678:31434/TCP   5s
+[11:27] ~
+➤ k get svc my-lbs -o yaml                                                                                                                                               
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: "2020-05-06T11:27:52Z"
+  labels:
+    app: my-lbs
+  name: my-lbs
+  namespace: default
+  resourceVersion: "1367"
+  selfLink: /api/v1/namespaces/default/services/my-lbs
+  uid: dff78db2-fb01-4528-b9b3-ed93b6c20fc8
+spec:
+  clusterIP: 10.110.153.149
+  externalTrafficPolicy: Cluster
+  ports:
+  - name: 5678-8080
+    nodePort: 31434
+    port: 5678
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: my-lbs
+  sessionAffinity: None
+  type: LoadBalancer
+status:
+  loadBalancer: {}
+````
+
+- NodePort service type => service with a clusterIp AND NodePort 
+- LoadBalancer service type  => service with  a (ClusterIP AND NodePort) AND "external load balancer routes"  <=> service with  a NodePort AND "external load balancer routes" 
+
+See doc: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
+
+<!-- dl nodeport not accessible but it is and it used by the load balancer
+confirmed by ales nosek 
+-->
+
+In azure we can set the load balancer IP: https://docs.microsoft.com/en-us/azure/aks/static-ip
+
 
 ### ExternalName
 
@@ -375,13 +437,13 @@ vagrant@k8sMaster:~$ k exec -it deploy-test-854bc66d47-tptt9 -- /bin/sh
 
 Note external name does not have cluster ip, and external ip is replacing the virtual ip
 It does not have env var
-So usable only inside a pod using DNS disovery
+So usable only inside a pod using DNS discovery
 
 
 ### Service without a selector
 
 Controller when there is label creates endpoint
-But can define it manually in particular to target outside ressource
+But can define it manually in particular to target outside resource
 
 ````
 vagrant@k8sMaster:~$ nslookup google.fr
@@ -441,6 +503,161 @@ Either
 < Location: https://github.com/
 
 ````
+
+Note service `my-service` has for type `ClusterIP`.
+
+### headless service
+
+Note there is also headless service: 
+https://kubernetes.io/docs/concepts/services-networking/service/#headless-services
+
+Here I give an example with selector.
+
+````shell script
+# create a deployment with 3 replicas
+kubectl delete deployment --all
+kubectl delete svc --all 
+
+kubectl create deployment deploy1 --image=nginx
+kubectl scale deployment deploy1 --replicas=3
+kubectl get pods -o wide
+
+# non headless svc
+echo 'apiVersion: v1
+kind: Service
+metadata:
+  name: my-non-headless-service
+spec:
+  selector:
+    app: deploy1
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
+' > my-non-headless-service.yaml 
+kubectl delete -f my-non-headless-service.yaml 
+kubectl apply -f my-non-headless-service.yaml
+
+# headless svc
+echo 'apiVersion: v1
+kind: Service
+metadata:
+  name: my-headless-service
+spec:
+  clusterIP: None # clusterIP set to None for headless
+  selector:
+    app: deploy1
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
+' > headless-svc.yaml
+kubectl delete -f headless-svc.yaml # field cluster ip is immutable
+kubectl apply -f headless-svc.yaml
+
+# doctor for experiment
+# https://github.com/scoulomb/docker-doctor
+kubectl delete deployment doctor 
+kubectl create deployment doctor --image=scoulomb/docker-doctor:dev
+# kubectl exec -it $(kubectl get po | grep doctor | awk '{print $1}') -- bash
+
+````
+
+Let's do some observations
+
+````shell script
+kubectl get po -o wide | grep deploy1-
+kubectl get svc | grep headless
+kubectl get ep | grep headless
+
+
+kubectl exec -it $(kubectl get po | grep doctor | awk '{print $1}') -- env | grep -i headless
+
+kubectl exec -it $(kubectl get po | grep doctor | awk '{print $1}') -- nslookup my-non-headless-service
+kubectl exec -it $(kubectl get po | grep doctor | awk '{print $1}') -- nslookup my-headless-service
+
+kubectl exec -it $(kubectl get po | grep doctor | awk '{print $1}') -- curl my-non-headless-service | head -n 5
+kubectl exec -it $(kubectl get po | grep doctor | awk '{print $1}') -- curl my-headless-service | head -n 5
+
+````
+
+Output is 
+
+````shell script
+root@sylvain-hp:/home/sylvain# kubectl get po -o wide | grep deploy1-
+deploy1-5b979f7745-6lc7f   1/1     Running   0          63s   172.17.0.4   sylvain-hp   <none>           <none>
+deploy1-5b979f7745-n9dt7   1/1     Running   0          63s   172.17.0.5   sylvain-hp   <none>           <none>
+deploy1-5b979f7745-wcscr   1/1     Running   0          63s   172.17.0.6   sylvain-hp   <none>           <none>
+root@sylvain-hp:/home/sylvain# kubectl get svc | grep headless
+my-headless-service       ClusterIP   None            <none>        80/TCP    46s
+my-non-headless-service   ClusterIP   10.97.238.145   <none>        80/TCP    47s
+root@sylvain-hp:/home/sylvain# kubectl get ep | grep headless
+my-headless-service       172.17.0.4:80,172.17.0.5:80,172.17.0.6:80   49s
+my-non-headless-service   172.17.0.4:80,172.17.0.5:80,172.17.0.6:80   50s
+````
+
+````shell script
+root@sylvain-hp:/home/sylvain# kubectl exec -it $(kubectl get po | grep doctor | awk '{print $1}') -- env | grep -i headless
+MY_NON_HEADLESS_SERVICE_PORT_80_TCP_PORT=80
+MY_NON_HEADLESS_SERVICE_PORT_80_TCP_ADDR=10.97.238.145
+MY_NON_HEADLESS_SERVICE_PORT=tcp://10.97.238.145:80
+MY_NON_HEADLESS_SERVICE_PORT_80_TCP_PROTO=tcp
+MY_NON_HEADLESS_SERVICE_SERVICE_HOST=10.97.238.145
+MY_NON_HEADLESS_SERVICE_SERVICE_PORT_HTTP=80
+MY_NON_HEADLESS_SERVICE_PORT_80_TCP=tcp://10.97.238.145:80
+MY_NON_HEADLESS_SERVICE_SERVICE_PORT=80
+````
+
+we can see headless does not have env var discovery
+
+````shell script
+root@sylvain-hp:/home/sylvain# kubectl exec -it $(kubectl get po | grep doctor | awk '{print $1}') -- nslookup my-non-headless-service
+Server:         10.96.0.10
+Address:        10.96.0.10#53
+
+Name:   my-non-headless-service.default.svc.cluster.local
+Address: 10.97.238.145
+
+root@sylvain-hp:/home/sylvain# kubectl exec -it $(kubectl get po | grep doctor | awk '{print $1}') -- nslookup my-headless-service
+Server:         10.96.0.10
+Address:        10.96.0.10#53
+
+Name:   my-headless-service.default.svc.cluster.local
+Address: 172.17.0.6
+Name:   my-headless-service.default.svc.cluster.local
+Address: 172.17.0.4
+Name:   my-headless-service.default.svc.cluster.local
+Address: 172.17.0.5
+````
+
+Here we can DNS resolution pointing to cluster IP vs Pod IP (round robin as seen [here](https://github.com/scoulomb/myDNS/blob/b310d9cdf3fc1a6476d0dd6e16d0a5ee53c2df78/2-advanced-bind/5-real-own-dns-application/6-use-linux-nameserver-part-k.md#curisoity)).
+ 
+We could have a weird entry where we have a A pointing to the node IP, if we have a hostnetwork pod (as the Pod IP will be the IP of the node)
+See [here](#use-hostport-and-hostnetwork-together), where deployment match same label.
+Also if no pod is matching a headless service label, no record is created.
+
+````shell script
+root@sylvain-hp:/home/sylvain# kubectl exec -it $(kubectl get po | grep doctor | awk '{print $1}') -- curl my-non-headless-service | head -n 5
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+root@sylvain-hp:/home/sylvain# kubectl exec -it $(kubectl get po | grep doctor | awk '{print $1}') -- curl my-headless-service | head -n 5
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+````
+
+Here we can sere curl is working.
+
+<!-- traceroute and ping seems to work well for non headless unlike headless. STOP HERE -->
+<!-- externalName can be seen as without selector OK -->
+
 ----
 # Ingresses
 
@@ -798,13 +1015,28 @@ As seen here: https://docs.traefik.io/v1.7/user-guide/kubernetes/
 It most likely also needs RBAC on service to find service (same as endpoint) label, because the ingress resource takes the service name.
 Note endpoint exists because of service (endpoints controller) 
 
-It can also use the kube-proxy: as explained in [traefik doc](https://kubernetes.io/docs/concepts/configuration/overview/#services)
+Similarly Nginx ingress controller is also watching endpoint. From this [article](https://itnext.io/managing-ingress-controllers-on-kubernetes-part-2-36a64439e70a
+> the k8s-ingress-nginx controller uses the service endpoints instead of its virtual IP address.
+
+Thus `kube-proxy` is not used.
+
+Ingress itself can also use the `kube-proxy` or not: as explained in [traefik doc](https://doc.traefik.io/traefik/v1.7/user-guide/kubernetes/) or in source [here](https://github.com/scoulomb/traefik/blob/v1.7/docs/user-guide/kubernetes.md).
 > DaemonSets can be run with the NET_BIND_SERVICE capability, which will allow it to bind to port 80/443/etc on each host. This will allow bypassing the kube-proxy, and reduce traffic hops. Note that this is against the Kubernetes [Best Practices Guidelines](https://kubernetes.io/docs/concepts/configuration/overview/#services), and raises the potential for scheduling/scaling issues. Despite potential issues, this remains the choice for most ingress controllers.
+
+With the 2 deployment modes described in the doc:
+- > The Service will expose two NodePorts which allow access to the ingress and the web interface. 
+
+=> `kube-proxy` is used.
+
+- > This will create a Daemonset that uses privileged ports 80/8080 on the host. This may not work on all providers, but illustrates the static (non-NodePort) hostPort binding.
+  > The traefik-ingress-service can still be used inside the cluster to access the DaemonSet pods. 
+
+=> `kube-proxy` is NOT used.
+
+We used second mode (where capabilities are not explicit as allowed by default).
 
 cf. [StackOverflow response](https://stackoverflow.com/questions/60031377/load-balancing-in-front-of-traefik-edge-router) with the update.
 
-Nginx ingress controller is also watching endpoint. From this [article](https://itnext.io/managing-ingress-controllers-on-kubernetes-part-2-36a64439e70a
-> the k8s-ingress-nginx controller uses the service endpoints instead of its virtual IP address.
 
 See complementary articles:
 - https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/
@@ -816,13 +1048,22 @@ OpenShift Route is equivalent to Ingress
 Cf. this [OpenShift blogpost](https://blog.openshift.com/kubernetes-ingress-vs-openshift-route/)
 From [OpenShift HA proxy doc](https://docs.okd.io/latest/architecture/networking/assembly_available_router_plugins.html#architecture-haproxy-router):
 > The template router has two components:
-> -  A wrapper that watches endpoints and routes and causes a HAProxy reload based on changes
+> - A wrapper that watches endpoints and routes and causes a HAProxy reload based on changes
 > - A controller that builds the HAProxy configuration file based on routes and endpoints
 
 Thus it seems OpenShift route bypass also `kube-proxy`
 
+## More details on Ingress configuration with Minikube
+
+I this post we did a deep deep dive of Minikube ingress based on [Nginx ingress](https://github.com/kubernetes/website/issues/26137):
+https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-use-linux-nameserver-part-0.md (from part f).
+with certificate management.
+
+<!-- which is completed (and referenced in post) with a deep-dive on OpenShift route: https://github.com/scoulomb/private_script/tree/main/sei-auto -->
 
 ## Single point of failure
+
+### When using Ingress
 
 To avoid SPOF, we load balance on all nodes where Traefik is running ([daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset)) which then redispatch to a pod potentially in different node?
 (or DNS load balancing)
@@ -856,18 +1097,642 @@ So answer is yes.
 As such we have following steps:
 
 1. DNS targeting a VIP (used later by vhost) 
-2. F5 load balancer exposing a VIP with pool members being (Nodes -> cluster nodes, Port -> NodePort). Note [1 + 2] can be replaced by a DNS round robin
+2. Load balancer (such as F5) exposing a VIP with pool members being (Nodes -> cluster nodes, Port -> NodePort). 
+Note [1 + 2] can be replaced by a DNS round robin. I assume Load balancer could be configured via Kubernetes with service type load balancer.
 3. The load balancer will actually target a [NodePort service type](./service_deep_dive.md#NodePort) pointing to Ingress controller pod (L3 routing).
-Alternative (2+3). OR we can also bind ingress controller on each node directly to port 88/443 (privileged port) to [bypass `kube-proxy`](#Implementation-details)
+Alternative (2+3). OR we can also bind ingress controller on each node directly to port 80/443 (privileged port) to [bypass `kube-proxy`](#Implementation-details)
 4. Ingress controller redirect to correct service / endpoint / pod using vhost header (L7 routing). 
-5. Ingress controller forwards to correct service which directs to pod (this is usually done via [ip table direcly](#service-internal) ).
+Ingress directly watch svc/ep and target ep directly, thus kube-proxy is also not used at that level unlike a NodePort.
 
-(Note endpoints created by endpoint controller based on pod and service label, iptable updated by kube-proxy based on endpoints and service )
+(Note endpoints were created by endpoint controller based on pod and service label, iptable updated by kube-proxy based on endpoints and service )
 
 So we have until until 3 levels of indirection, but usually only 2 because `kube-proxy` is bypassed. 
 
-A [load balancer service type](./service_deep_dive.md#LoadBalancer) could be used instead
+I assume OpenShift route is the Alternative (2+3).
 
-I assume OpenShift route is the Alternative (2+3)
+Here we can see AWS is doing load balancing in front of the ingress: https://aws.amazon.com/blogs/opensource/network-load-balancer-nginx-ingress-controller-eks/
 
-Next: [F5 integration](./k8s_f5_integration.md)
+### When using NodePort
+
+An alternative to ingress could be to only use a [load balancer service type](./service_deep_dive.md#LoadBalancer) could be used instead.
+Or load balance manually on the NodePort.
+Thus we would use the `kube-proxy`.
+
+Here: https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-use-linux-nameserver-part-f.md.
+We describe same step without load balancer, using Minikube ingress and NAT.
+
+
+We can also force NodePort to route to local using field [service.spec.externalTrafficPolic](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/#preserving-the-client-source-ip).
+This avoids extra hop on another node and SNAT.
+
+
+````shell script
+➤ sudo kubectl explain service.spec.externalTrafficPolicy
+KIND:     Service
+VERSION:  v1
+
+FIELD:    externalTrafficPolicy <string>
+
+DESCRIPTION:
+     externalTrafficPolicy denotes if this Service desires to route external
+     traffic to node-local or cluster-wide endpoints. "Local" preserves the
+     client source IP and avoids a second hop for LoadBalancer and Nodeport type
+     services, but risks potentially imbalanced traffic spreading. "Cluster"
+     obscures the client source IP and may cause a second hop to another node,
+     but should have good overall load-spreading.
+````
+
+
+But from https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-policies
+> With this architecture, it’s important that any ingress traffic lands on nodes that are running the corresponding pods for that service, otherwise, the traffic would be dropped
+
+A solution could be to use load  balancer health check on the NodePort.  
+
+[When using ingress](#when-using-ingress), we could also avoid extra hop when using NodePort. 
+Furthermore Ingress controller being a `DaemonSet`, we always have a pod running on each node.
+ 
+I recommend to read: 
+- https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-policies
+- https://web.archive.org/web/20210205193446/https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-policies
+
+Note this is link to that article where we had seen cluster ip
+https://github.com/scoulomb/myDNS/blob/2b846f42f7443e84fc667ae3f3f66188f1c69259/2-advanced-bind/1-bind-in-docker-and-kubernetes/2-understand-source-ip-in-k8s.md
+and it references this doc
+https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-clusterip
+When they talk on source ip preservation on node port and lb service depending on external traffic policy.
+Note as mention externalTrafficPolicy does not apply to clusterIP (internal OK).
+
+Next: [F5 integration](./k8s_f5_integration.md) where F5 ingress in cluster mode watches directly pods and bind port 80/443 which enables to have a single level of indirection as suggested in SO answer. 
+
+
+# Other way to access a service
+
+Note in previous experience we were using a real Kubernetes distribution with Nginx ingress.
+Here we use Minikube with ingress add-ons
+
+<!--
+Auth using wpa or service button
+- Configure NAT
+http://192.168.1.1/network/nat
+ssh 	TCP 	Port 	22 	192.168.1.32 	22
+- Get your public IP
+http://192.168.1.1/state/wan	
+109.29.148.109
+-->n.
+
+## hostNetwork: true
+
+### Try to deploy a pod with hostNetwork
+
+````shell script
+ssh sylvain@109.29.148.109
+alias k='sudo kubectl'
+k create deployment deploy1 --image=nginx --dry-run -o yaml
+
+echo 'apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: deploy1
+  name: deploy1-hostnetwork
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deploy1
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: deploy1
+    spec:
+      hostNetwork: true # Note hostNetwork here
+      containers:
+      - image: nginx
+        name: nginx
+        resources: {}' > deploy1-hostnetwork.yaml
+
+k apply -f deploy1-hostnetwork.yaml
+````
+
+### Port 80 could be already in use by another process
+
+So if we curl 
+
+````shell script
+ curl --silent http://localhost 
+````
+
+````shell script
+sylvain@sylvain-hp:~$  curl --silent http://localhost
+<html>
+<head><title>404 Not Found</title></head>
+<body>
+<center><h1>404 Not Found</h1></center>
+<hr><center>nginx/1.17.10</center>
+</body>
+</html>
+````
+
+
+here we actually target the ingress (which is using host port , see below).
+And pod will crashloopback off as port 80 is already in use.
+
+````shell script
+sylvain@sylvain-hp:~$ k get deploy
+NAME                  READY   UP-TO-DATE   AVAILABLE   AGE
+deploy1-hostnetwork   0/1     1            0           14m
+
+ylvain@sylvain-hp:~$ k logs deploy1-hostnetwork-6c6d594544-h2ck4
+[...]
+2021/01/29 08:42:18 [emerg] 1#1: bind() to [::]:80 failed (98: Address already in use)
+nginx: [emerg] bind() to [::]:80 failed (98: Address already in use)
+2021/01/29 08:42:18 [emerg] 1#1: still could not bind()
+nginx: [emerg] still could not bind()
+````
+
+
+### A normal deployment would work
+
+````shell script
+k create deployment deploy1-normal --image=nginx
+curl $(k get po -o wide | grep "deploy1-normal-" | awk '{print $6}') | head -n 5
+````
+
+output is 
+
+````shell script
+sylvain@sylvain-hp:~$ curl $(k get po -o wide | grep "deploy1-normal-" | awk '{print $6}') | head -n 5
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   612  100   612    0     0   597k      0 --:--:-- --:--:-- --:--:--  597k
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+````
+
+### To make hostNetwork work, we will disable the ingress.
+
+````shell script
+sudo minikube addons disable ingress
+k delete deploy deploy1-hostnetwork
+k apply -f deploy1-hostnetwork.yaml
+````
+So that we can curl
+
+````shell script
+curl --silent http://localhost 
+````
+
+therefore output is 
+
+````shell script
+sylvain@sylvain-hp:~$ curl --silent http://localhost | head -n 5
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+````
+
+### What happens if I scale
+
+````shell script
+k scale deployment deploy1-hostnetwork --replicas=3
+````
+
+As we can use only one port 
+
+````shell script
+sylvain@sylvain-hp:~$ k get po | grep deploy1-hostnetwork-
+deploy1-hostnetwork-6c6d594544-4f7zn   1/1     Running            0          7m40s
+deploy1-hostnetwork-6c6d594544-cdfzv   0/1     CrashLoopBackOff   2          55s
+deploy1-hostnetwork-6c6d594544-kpgg2   0/1     CrashLoopBackOff   2          55s
+sylvain@sylvain-hp:~$ k logs deploy1-hostnetwork-6c6d594544-cdfzv | tail -n 4
+2021/01/29 10:17:39 [emerg] 1#1: bind() to [::]:80 failed (98: Address already in use)
+nginx: [emerg] bind() to [::]:80 failed (98: Address already in use)
+2021/01/29 10:17:39 [emerg] 1#1: still could not bind()
+nginx: [emerg] still could not bind()
+````
+
+### Clean-up and restore ingress
+
+````shell script
+k delete deploy deploy1-hostnetwork
+k delete deploy deploy1-normal
+sudo minikube addons enable ingress
+````
+
+## Host port
+
+This is what is actually used by ingress in ["When using ingress"](#when-using-ingress) where we use:
+> Alternative (2+3)
+
+where we 
+
+> bind ingress controller on each node directly to port 80/443
+
+### Try to deploy a pod with host port
+
+````shell script
+ssh sylvain@109.29.148.109
+alias k='sudo kubectl'
+
+echo 'apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: deploy1
+  name: deploy1-hostport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deploy1
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: deploy1
+    spec:
+      containers:
+      - image: nginx
+        name: nginx
+        ports:
+          - containerPort: 80 # if removed missing required field "containerPort" even without hostNetwork
+            hostPort: 80
+        resources: {}' > deploy1-hostport.yaml
+
+k apply -f deploy1-hostport.yaml
+````
+
+### Port 80 could be already in use by another process
+
+So if we curl 
+
+````shell script
+curl --silent http://localhost 
+````
+
+````shell script
+sylvain@sylvain-hp:~$  curl --silent http://localhost
+<html>
+<head><title>404 Not Found</title></head>
+<body>
+<center><h1>404 Not Found</h1></center>
+<hr><center>nginx/1.17.10</center>
+</body>
+</html>
+````
+
+
+here we actually target the ingress (which is using host port , see below).
+And pod will crashloopback off as port 80 is already in use.
+
+````shell script
+k get deploy
+k get po | grep deploy1-hostport
+k describe po $(k get po | grep deploy1-hostport | awk '{print $1}') | grep -A 3 Events
+````
+
+output is 
+
+
+````shell script
+sylvain@sylvain-hp:~$ k get deploy
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+deploy1-hostport   0/1     1            0           118s
+sylvain@sylvain-hp:~$ k get po | grep deploy1-hostport
+deploy1-hostport-665b55679b-kx5gl   0/1     Pending   0          2m1s
+sylvain@sylvain-hp:~$ k describe po $(k get po | grep deploy1-hostport | awk '{print $1}') | grep -A 3 Events
+Events:
+  Type     Reason            Age        From               Message
+  ----     ------            ----       ----               -------
+  Warning  FailedScheduling  <unknown>  default-scheduler  0/1 nodes are available: 1 node(s) didn't have free ports for the requested pod ports.
+`````
+
+Here the pod is not scheduled (so it does not go through the log steps).
+
+### A normal deployment would work
+
+````shell script
+k create deployment deploy1-normal --image=nginx
+curl $(k get po -o wide | grep "deploy1-normal-" | awk '{print $6}') | head -n 5
+````
+
+output is 
+
+````shell script
+sylvain@sylvain-hp:~$ curl $(k get po -o wide | grep "deploy1-normal-" | awk '{print $6}') | head -n 5
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   612  100   612    0     0   597k      0 --:--:-- --:--:-- --:--:--  597k
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+````
+
+### To make hostPort work, we will disable the ingress.
+
+````shell script
+sudo minikube addons disable ingress
+k delete deploy deploy1-hostport
+k apply -f deploy1-hostport.yaml
+````
+So that we can curl
+
+````shell script
+curl --silent http://localhost | head -n 5
+````
+
+therefore output is 
+
+````shell script
+sylvain@sylvain-hp:~$ curl --silent http://localhost | head -n 5
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+````
+
+### What happens if I scale
+
+````shell script
+k scale deployment deploy1-hostport --replicas=3
+k get po | grep deploy1-hostport-
+k describe po $(k get po -o wide | grep "deploy1-hostport-" | grep Pending | head -n 1 | awk '{print $1}' ) |  grep -A 3 Events
+````
+
+As we can use only one port 
+
+````shell script
+sylvain@sylvain-hp:~$ k get po | grep deploy1-hostport-
+deploy1-hostport-665b55679b-8k2mb   1/1     Running   0          5m22s
+deploy1-hostport-665b55679b-9t627   0/1     Pending   0          4m44s
+deploy1-hostport-665b55679b-fqh9s   0/1     Pending   0          4m44s
+sylvain@sylvain-hp:~$ k describe po $(k get po -o wide | grep "deploy1-hostport-" | grep Pending | head -n 1 | awk '{print $1}' ) |  grep -A 3 Events
+Events:
+  Type     Reason            Age        From               Message
+  ----     ------            ----       ----               -------
+  Warning  FailedScheduling  <unknown>  default-scheduler  0/1 nodes are available: 1 node(s) didn't have free ports for the requested pod ports.
+sylvain@sylvain-hp:~$
+````
+
+
+### Clean-up and restore ingress
+
+````shell script
+k delete deploy deploy1-hostport
+k delete deploy deploy1-normal
+sudo minikube addons enable ingress
+````
+
+### Impact on scheduling
+
+Note container port can impact scheduling:
+`0/1 nodes are available: 1 node(s) didn't have free ports for the requested pod ports.`
+
+### ContainerPort unlike hostPort can make port forwarding
+
+See documenttion from the Kubectl
+
+````shell script
+sylvain@sylvain-hp:~$  k explain pod.spec.containers.ports
+KIND:     Pod
+VERSION:  v1
+
+RESOURCE: ports <[]Object>
+
+DESCRIPTION:
+     List of ports to expose from the container. Exposing a port here gives the
+     system additional information about the network connections a container
+     uses, but is primarily informational. Not specifying a port here DOES NOT
+     prevent that port from being exposed. Any port which is listening on the
+     default "0.0.0.0" address inside a container will be accessible from the
+     network. Cannot be updated.
+
+     ContainerPort represents a network port in a single container.
+
+FIELDS:
+   containerPort        <integer> -required-
+     Number of port to expose on the pod's IP address. This must be a valid port
+     number, 0 < x < 65536.
+
+   hostIP       <string>
+     What host IP to bind the external port to.
+
+   hostPort     <integer>
+     Number of port to expose on the host. If specified, this must be a valid
+     port number, 0 < x < 65536. If HostNetwork is specified, this must match
+     ContainerPort. Most containers do not need this.
+[...]
+````
+
+Thus if I do
+
+````shell script
+echo 'apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: deploy1
+  name: deploy1-hostport
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deploy1
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: deploy1
+    spec:
+      containers:
+      - image: nginx
+        name: nginx
+        ports:
+          - containerPort: 80 # if removed missing required field "containerPort"
+            hostPort: 7777
+        resources: {}' > deploy1-hostport-with-fw.yaml
+
+k apply -f deploy1-hostport-with-fw.yaml
+````
+
+if we do
+
+````shell script
+curl localhost:7777
+````
+
+output is
+
+````shell script
+sylvain@sylvain-hp:~$ curl localhost:7777 | head -n 5
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   612  100   612    0     0   597k      0 --:--:-- --:--:-- --:--:--  597k
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+````
+
+
+## Use hostPort and hostNetwork together
+
+````shell script
+echo 'apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: deploy1
+  name: deploy1-hostnetwork-and-port
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deploy1
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: deploy1
+    spec:
+      hostNetwork: true # Note hostNetwork here
+      containers:
+      - image: nginx
+        name: nginx
+        ports:
+          - containerPort: 80 # if removed missing required field "containerPort"
+            hostPort: 7777
+        resources: {}' > deploy1-hostnetwork-and-port
+
+k apply -f deploy1-hostnetwork-and-port
+````
+
+output is
+
+````shell script
+The Deployment "deploy1-hostnetwork-and-port" is invalid: spec.template.spec.containers[0].ports[0].containerPort: Invalid value: 80: must match `hostPort` when `hostNetwork` is true
+````
+
+Thus this will work
+
+````shell script
+echo 'apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: deploy1
+  name: deploy1-hostnetwork-and-port
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deploy1
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: deploy1
+    spec:
+      hostNetwork: true # Note hostNetwork here
+      containers:
+      - image: nginx
+        name: nginx
+        ports:
+          - containerPort: 80 # if removed missing required field "containerPort"
+            hostPort: 80
+        resources: {}' > deploy1-hostnetwork-and-port
+
+sudo minikube addons disable ingress
+k apply -f deploy1-hostnetwork-and-port
+curl localhost:80 | head -n 5
+````
+
+output is 
+
+````shell script
+sylvain@sylvain-hp:~$ curl localhost:80 | head -n 5
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   612  100   612    0     0   597k      0 --:--:-- --:--:-- --:--:--  597k
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+````
+
+## kubectl port forwarding and proxy
+
+Those are shown here: https://github.com/scoulomb/myk8s/blob/master/Deployment/advanced/container-port.md#is-it-an-issue-to-not-have-the-containerport
+We also show in which circumstances container port can be used.
+
+<!-- 
+here: https://github.com/scoulomb/myk8s/blob/master/Deployment/advanced/container-port.md#adding-containerport-to-7777
+could force the port and typo //, stop here -->
+
+
+## Note on Ingress
+
+Ingress controller use hostPort, as seen in "Alternative (2+3)." in section ["when using ingress"](#when-using-ingress)
+
+
+---
+# Other examples
+
+## In my DNS
+
+In this script we use various way to access DNS as shown here:
+https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-docker-bind-dns-use-linux-nameserver-rather-route53/6-use-linux-nameserver.sh
+
+## Link with Ales Nosek blogpost
+
+In this article: https://alesnosek.com/blog/2017/02/14/accessing-kubernetes-pods-from-outside-of-the-cluster/.
+Which is mirrored [here](./resources/alesnosek-blogpost.md).
+
+They talked on different way to 
+> Accessing Kubernetes Pods from Outside of the Cluster
+
+They use:
+- [hostNetwork: true](resources/alesnosek-blogpost.md#hostnetwork-true)
+- [hostPort](resources/alesnosek-blogpost.md#hostport):
+We also mentioned it is used by Ingress.
+- [NodePort](resources/alesnosek-blogpost.md#nodeport)
+In [spof section](#when-using-nodeport)  we also mention we can load balance manually.
+- [LoadBalancer](resources/alesnosek-blogpost.md#loadbalancer)
+- [Ingress](resources/alesnosek-blogpost.md#ingress):
+> - In the case of the LoadBalancer service, the traffic that enters through the external load balancer is forwarded to the kube-proxy that in turn forwards the traffic to the selected pods.
+> - In contrast, the Ingress load balancer forwards the traffic straight to the selected pods which is more efficient.
+
+See same comment in [spof section](#single-point-of-failure) where we also mentioned ingress watch directly endpoint.
+2nd quote is really true  with what we call "with Alternative (2+3)".
+
+<!-- post clear and ingress quote actually OK-->
+
+<!-- ssl termination is discussed 
+https://github.com/scoulomb/private_script/ in certificate.md
+where it is at ingress, pod level but could be at lb -->
+
+---
+# Understanding the internals
+
+See [Appendix on internals](appendix_internals.md).
