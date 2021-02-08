@@ -117,7 +117,7 @@ It seems that
 <=>
 - [conmon](https://github.com/cri-o/cri-o/tree/master/conmon)
 
-Quoting belwow what can be found in this working document: [Exec/attach/port-forward streaming requests](https://docs.google.com/document/d/1OE_QoInPlVCK9rMAx9aybRmgFiVjHpJCHI9LrfdNM_s/edit?usp=sharing)
+Quoting below what can be found in this working document: [Exec/attach/port-forward streaming requests](https://docs.google.com/document/d/1OE_QoInPlVCK9rMAx9aybRmgFiVjHpJCHI9LrfdNM_s/edit?usp=sharing)
 
 > ![cri streaming request](resources/cri-streaming-request.PNG)
 
@@ -185,9 +185,9 @@ In short
 - 1/ `kubelet -> crio-shim (CRI implem) -> cri-o -> runc (OCI Implem) -> containers `
 
 Similarly 
-- 2/ `kubelet -> dockershim (CRI implem) ->  docker -> contenaird (CRI implem) -> runc (OCI Implem) -> containers`
+- 2/ `kubelet -> dockershim (CRI implem) ->  docker -> contenaird (OCI Implem) -> runc (OCI Implem) -> containers`
 and
-- 3/ `kubelet -> container-d shim (CRI implem) ->  contenaird -> runc (OCI Impelm) -> containers`
+- 3/ `kubelet -> container-d shim (CRI implem) ->  contenaird -> runc (OCI Implem) -> containers`
 
 Compliant with [container engine](../container-engine/container-engine.md), and illustration above.
 
@@ -232,6 +232,15 @@ Then runc seems to use socket
 - https://github.com/opencontainers/runc/commit/7df64f88866962d3ee56dc67039f0ea1e13c49cd
 
 A socket needs a port: https://github.com/scoulomb/http-over-socket/blob/main/1-client/main.py#L90
+
+Quoting [container engine](../container-engine/container-engine.md#kubernetes-will-deprecate-docker).
+> But as Docker produce OCI compliant image, those engine (contenaird, cri-o) will be able to run Docker image.
+
+Ineed the fact docker, podman produces OCI compliant image explain why those images can be run by Kubernetes
+using cri-o, contenaird and docker.
+
+Thus even if k8s stops supporting docker, k8s can continue to run image produced by Docker using contenaird and CRI-O.
+When k8s uses containerd, it even uses the same container engine as Docker.
 
 ## How liveness and readiness probes are implemented?
 
