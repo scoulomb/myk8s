@@ -236,7 +236,7 @@ A socket needs a port: https://github.com/scoulomb/http-over-socket/blob/main/1-
 Quoting [container engine](../container-engine/container-engine.md#kubernetes-will-deprecate-docker).
 > But as Docker produce OCI compliant image, those engine (contenaird, cri-o) will be able to run Docker image.
 
-Ineed the fact docker, podman produces OCI compliant image explain why those images can be run by Kubernetes
+Indeed the fact docker, podman produces OCI compliant image explain why those images can be run by Kubernetes
 using cri-o, contenaird and docker.
 
 Thus even if k8s stops supporting docker, k8s can continue to run image produced by Docker using contenaird and CRI-O.
@@ -334,3 +334,19 @@ OK STOP
 -->
 
 <!-- all this section + container engine concluded with feb 2021 knowledge -->
+
+## Other doc 
+
+This video explains same concept:
+https://www.youtube.com/watch?v=7KUdmFyefSA
+
+I like the fact they that:
+- what is actually decommissioned is the Shim
+- the fact docker produce OCI, it can be run by any container engine as mention here in [Architecture](#architecture).
+- Something I did not know: a project will maintain Dockershim separately (outside k8s)
+- perspective what to do if
+    - dev: nothing
+    - managed k8s: nothing 
+    - deploy own k8s: some changes
+    
+<!-- clear and aligned STOP - no dive -->
