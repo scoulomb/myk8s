@@ -1100,7 +1100,7 @@ As such we have following steps:
 2. Load balancer (such as F5) exposing a VIP with pool members being (Nodes -> cluster nodes, Port -> NodePort). 
 Note [1 + 2] can be replaced by a DNS round robin. I assume Load balancer could be configured via Kubernetes with service type load balancer.
 3. The load balancer will actually target a [NodePort service type](./service_deep_dive.md#NodePort) pointing to Ingress controller pod (L3 routing).
-Alternative (2+3). OR we can also bind ingress controller on each node directly to port 80/443 (privileged port) to [bypass `kube-proxy`](#Implementation-details)
+Alternative (2+3). OR we can also [bind ingress controller](#note-on-ingress) on each node directly to port 80/443 (privileged port) to [bypass `kube-proxy`](#Implementation-details)
 4. Ingress controller redirect to correct service / endpoint / pod using vhost header (L7 routing). 
 Ingress directly watch svc/ep and target ep directly, thus kube-proxy is also not used at that level unlike a NodePort.
 
@@ -1112,15 +1112,14 @@ I assume OpenShift route is the Alternative (2+3).
 
 Here we can see AWS is doing load balancing in front of the ingress: https://aws.amazon.com/blogs/opensource/network-load-balancer-nginx-ingress-controller-eks/
 
-### When using NodePort
-
-An alternative to ingress could be to only use a [load balancer service type](./service_deep_dive.md#LoadBalancer) could be used instead.
-Or load balance manually on the NodePort.
-Thus we would use the `kube-proxy`.
-
-Here: https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-use-linux-nameserver-part-f.md.
+Here: https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-use-linux-nameserver-part-f.md
 We describe same step without load balancer, using Minikube ingress and NAT.
 
+### When using NodePort
+
+An alternative to ingress could be to only use a [load balancer service type](./service_deep_dive.md#LoadBalancer) which relies on `NodePort`.
+Or load balance manually on the NodePort.
+Thus we would use the `kube-proxy`.
 
 We can also force NodePort to route to local using field [service.spec.externalTrafficPolic](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/#preserving-the-client-source-ip).
 This avoids extra hop on another node and SNAT.
@@ -1148,8 +1147,9 @@ But from https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-
 
 A solution could be to use load  balancer health check on the NodePort.  
 
-[When using ingress](#when-using-ingress), we have extra hop when using NodePort. Ingress with NodePort is a particular case of NodePort (step 3 in previous section). 
-Furthermore Ingress controller being a `DaemonSet`, we always have a pod running on each node.
+[When using ingress](#when-using-ingress), with `NodePort` in step 3, we have extra hop (`kube-proxy` + depending on `externalTrafficPolicy`). 
+Ingress with NodePort is a particular case of NodePort.  <!-- clear -->
+However Ingress controller being a `DaemonSet`, we always have a pod running on each node.
  
 I recommend to read: 
 - https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-policies
@@ -1164,8 +1164,29 @@ Note as mention externalTrafficPolicy does not apply to clusterIP (internal OK).
 
 Next: [F5 integration](./k8s_f5_integration.md) where F5 ingress in cluster mode watches directly pods and bind port 80/443 which enables to have a single level of indirection as suggested in SO answer. 
 
+### Note on `externalTrafficPolicy`
 
-# Other way to access a service
+From doc: https://kubernetes.io/docs/tutorials/services/source-ip/: external traffic policy has an impact on source ip.
+
+In section above when using NodePort has 2 features:
+- via k8s load balancer service type (which is based on NodePort): https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-loadbalancer
+- or load balance manually on NodePort: https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-nodeport
+
+We had mentioned that load balancer could check health. They this is what [GKE is doing](https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-loadbalancer).
+
+To observe this they use a mirror server.
+We had made one here: https://github.com/scoulomb/http-over-socket
+
+<!--
+here also MAES orchestrator has one Mirror.java
+and referenced in https://github.com/scoulomb/private_script/blob/main/sei-auto/certificate/certificate.md is OK, no impact
+already seen this https://kubernetes.io/docs/tutorials/services/source-ip osef
+-->
+
+See also: https://matthewpalmer.net/kubernetes-app-developer/articles/kubernetes-networking-guide-beginners.html
+<!-- mirrored https://github.com/scoulomb/private_script/blob/main/sei-auto/certificate/certificate-doc/k8s-networking-guide/network-guide.md -->
+
+# Other ways to access a service
 
 Note in previous experience we were using a real Kubernetes distribution with Nginx ingress.
 Here we use Minikube with ingress add-ons
