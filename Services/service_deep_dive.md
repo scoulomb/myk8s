@@ -1148,7 +1148,7 @@ But from https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-
 
 A solution could be to use load  balancer health check on the NodePort.  
 
-[When using ingress](#when-using-ingress), we could also avoid extra hop when using NodePort. 
+[When using ingress](#when-using-ingress), we have extra hop when using NodePort. Ingress with NodePort is a particular case of NodePort (step 3 in previous section). 
 Furthermore Ingress controller being a `DaemonSet`, we always have a pod running on each node.
  
 I recommend to read: 
