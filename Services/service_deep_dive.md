@@ -1230,6 +1230,14 @@ https://github.com/scoulomb/private_script/blob/main/sei-auto/certificate/certif
 this is done via NAT (OK STOP)
 --> 
 
+<!--
+Note port=targetPort by default at svc level
+https://github.com/scoulomb/myk8s/blob/master/Deployment/advanced/container-port.md#create-pod-with-service-and-container-port
+when port!=targetPort it is like DNAT with port -> DNAPT
+Note here is the route: https://github.com/scoulomb/private_script/ -> modified_manifest.yaml#L136, targeting port to svc
+similar to NAT on the box
+-->
+
 # Other ways to access a service
 
 Note in previous experience we were using a real Kubernetes distribution with Nginx ingress.
