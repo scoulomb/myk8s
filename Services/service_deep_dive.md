@@ -1166,6 +1166,8 @@ Next: [F5 integration](./k8s_f5_integration.md) where F5 ingress in cluster mode
 
 ### Note on `externalTrafficPolicy`
 
+#### `externalTrafficPolicy`
+
 From doc: https://kubernetes.io/docs/tutorials/services/source-ip/: external traffic policy has an impact on source ip.
 
 In section above when using NodePort has 2 features:
@@ -1173,6 +1175,8 @@ In section above when using NodePort has 2 features:
 - or load balance manually on NodePort: https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-nodeport
 
 We had mentioned that load balancer could check health. They this is what [GKE is doing](https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-loadbalancer).
+
+#### Mirror
 
 To observe this they use a mirror server.
 We had made one here: https://github.com/scoulomb/http-over-socket
@@ -1185,6 +1189,46 @@ already seen this https://kubernetes.io/docs/tutorials/services/source-ip osef
 
 See also: https://matthewpalmer.net/kubernetes-app-developer/articles/kubernetes-networking-guide-beginners.html
 <!-- mirrored https://github.com/scoulomb/private_script/blob/main/sei-auto/certificate/certificate-doc/k8s-networking-guide/network-guide.md -->
+
+#### NAT 
+
+In K8s doc when not using `externalTrafficPolicy` with `NodePort` and `LoadBalancer` service type,
+they mention we are doing:
+- `SNAT` (replaces the source IP address (SNAT) in the packet with its own IP address)
+- + `DNAT` (replaces the destination IP on the packet with the pod IP)
+https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-nodeport
+
+What does it mean?
+
+From: https://superuser.com/questions/1410865/what-is-the-difference-between-nat-and-snat-dnat/1410870
+
+> "NAT" is a collective term for various translations - usually it's actually NAPT (involving the transport-layer port numbers as well).
+
+> Source NAT translates the source IP address,
+> usually when connecting from a private IP address to a public one ("LAN to Internet").
+
+What happens when we use Internet
+
+> Destination NAT translates the destination IP address,
+> usually when connecting from a public IP to a private IP (aka port-forwarding, reverse NAT, expose host, "public server in LAN").
+
+What happens when we configure NAT on the box
+
+Reverse NAT is similar to this:
+https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-use-linux-nameserver-part-f.md#analysis
+So in this case [if using ingress with NodePort in step 3](#when-using-ingress) we would apply NAT at box and inside the cluster.
+Here we details internal behavior.
+
+<!-- only this CASE imo, ingress where bind controller on privileged port has no NAT inside cluster -->
+
+<!-- more links in seed which is in comment of component mapping here
+https://github.com/scoulomb/private_script/blob/main/sei-auto/certificate/certificate.md#components-mapping
+where we can see this detail the detail OK of "OpenShift+route+deep+dive"
+
+Note here we have
+https://github.com/scoulomb/private_script/blob/main/sei-auto/certificate/certificate-doc/k8s-networking-guide/network-guide.md#communication-between-pods-and-services
+this is done via NAT (OK STOP)
+--> 
 
 # Other ways to access a service
 
