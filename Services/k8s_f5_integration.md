@@ -199,3 +199,7 @@ From [okd doc](https://docs.okd.io/latest/architecture/networking/assembly_avail
 
 - F5 lab: https://readthedocs.org/projects/f5-101-lab-kubernetes-agility17/downloads/pdf/master/
 - Cluster federation: https://github.com/kubernetes/community/blob/master/contributors/design-proposals/multicluster/federation.md
+
+## 3jun22 update
+
+k8s big ip controller is now CIS: https://clouddocs.f5.com/containers/latest/userguide/openshift/openshift-4-8-standalone.html
