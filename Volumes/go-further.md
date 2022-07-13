@@ -61,6 +61,7 @@ This is also mentioned in k8s book (`6.3.1. Introducing the hostPath volume`)
 
 ## Can I use hostPath directly without pv and pvc ?
 
+Here [in fluend tuto](fluentd-tutorial.md#step-2-adding-a-persistent-volume) we had used a `pvc` but could directly use a `pv`.
 
 ```` yaml
 k delete -f hostpath-direct-test.yaml
