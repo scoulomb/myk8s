@@ -116,4 +116,4 @@ OpenShift, github page also offer similar redirection feature: https://github.co
 See details on OpenShift insecure edge termination policy at: private_script/blob/main/sei-auto/certificate/insecureEdgeTerminationPolicy-appendix.md
 -->
 
-<!-- ccm somebody disables http without redirect osef-->
+<!-- Actually not was tragetting port 443 with http -->
