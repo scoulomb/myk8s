@@ -923,6 +923,8 @@ ingress.extensions/ingress-test created
 
 ## And target the ingress
 
+Below we use Node IP
+
 ````
 vagrant@k8sMaster:~$ curl -H "Host: www.example.com" http://127.0.0.1/
 deploy1-5d98f66655-gqgdq
@@ -1008,6 +1010,11 @@ deploy2-5ff54b6b7b-z7fgp   1/1     Running   0          77m   192.168.16.189   k
 
 ## Implementation details
 
+
+### Traefik to POD
+
+**The route/ingress does not actually target the service and then the pod.**
+
 From the doc Traefik controller is watching endpoints and ingress resources
 As seen here: https://docs.traefik.io/v1.7/user-guide/kubernetes/
 > Traefik will now look for cheddar service endpoints (ports on healthy pods) in both the cheese and the default namespace. Deploying cheddar into the cheese namespace and afterwards shutting down cheddar in the default namespace is enough to migrate the traffic.
@@ -1020,20 +1027,43 @@ Similarly Nginx ingress controller is also watching endpoint. From this [article
 
 Thus `kube-proxy` is not used.
 
+**It explain why a single TCP connection is opened between ingress and PODs.**
+
+
+<!-- so not a question of network layer -->
+
+### Ingress itself is a using standard k8s service but it can also bind port on node 
+
 Ingress itself can also use the `kube-proxy` or not: as explained in [traefik doc](https://doc.traefik.io/traefik/v1.7/user-guide/kubernetes/) or in source [here](https://github.com/scoulomb/traefik/blob/v1.7/docs/user-guide/kubernetes.md).
 > DaemonSets can be run with the NET_BIND_SERVICE capability, which will allow it to bind to port 80/443/etc on each host. This will allow bypassing the kube-proxy, and reduce traffic hops. Note that this is against the Kubernetes [Best Practices Guidelines](https://kubernetes.io/docs/concepts/configuration/overview/#services), and raises the potential for scheduling/scaling issues. Despite potential issues, this remains the choice for most ingress controllers.
 
 With the 2 deployment modes described in the doc:
-- > The Service will expose two NodePorts which allow access to the ingress and the web interface. 
+
+#### Option A: use `NodePort` 
+
+(or `LoadBalancer` service type which is a super sry)
+
+> The Service will expose two NodePorts which allow access to the ingress and the web interface. 
 
 => `kube-proxy` is used.
+
+
+**We use a `Deployment` + 2 service [`NodePort`](#nodeport) for the ingress: https://doc.traefik.io/traefik/v1.7/user-guide/kubernetes/#deploy-traefik-using-a-deployment-or-daemonset**
 
 - > This will create a Daemonset that uses privileged ports 80/8080 on the host. This may not work on all providers, but illustrates the static (non-NodePort) hostPort binding.
   > The traefik-ingress-service can still be used inside the cluster to access the DaemonSet pods. 
 
 => `kube-proxy` is NOT used.
 
-We used second mode (where capabilities are not explicit as allowed by default).
+#### Option B: bind a port in Node
+
+
+**We use `DaemonSet` + `NET_BIND_SERVICE` capability + container `hostPort`.**
+
+We need a `DaemonSet` to have the ingress on each node (as we do not use `Service` here even if created in doc example: https://doc.traefik.io/traefik/v1.7/user-guide/kubernetes/#deploy-traefik-using-a-deployment-or-daemonset but quoting it
+> The traefik-ingress-service can still be used inside the cluster to access the DaemonSet pods
+
+We used second mode in example above (where capabilities are not explicit as allowed by default).
 
 cf. [StackOverflow response](https://stackoverflow.com/questions/60031377/load-balancing-in-front-of-traefik-edge-router) with the update.
 
@@ -1042,7 +1072,7 @@ See complementary articles:
 - https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/
 - https://www.haproxy.com/fr/blog/dissecting-the-haproxy-kubernetes-ingress-controller/
 
-## OpenShift route (HA proxy)
+### OpenShift route (HA proxy)
 
 OpenShift Route is equivalent to Ingress
 Cf. this [OpenShift blogpost](https://blog.openshift.com/kubernetes-ingress-vs-openshift-route/)
@@ -1063,10 +1093,10 @@ with certificate management.
 
 ## Single point of failure
 
-### When using Ingress
-
-To avoid SPOF, we load balance on all nodes where Traefik is running ([daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset)) which then redispatch to a pod potentially in different node?
+To avoid SPOF, we load balance on all nodes where Traefik is running (all if [daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset)) which then redispatch to a pod potentially in different node?
 (or DNS load balancing)
+
+
 
 See this question: 
 https://stackoverflow.com/questions/60031377/load-balancing-in-front-of-traefik-edge-router
@@ -1094,13 +1124,16 @@ After correction on Kube-proxy made as a comment, and explained [here](#Implemen
 
 So answer is yes.
 
-As such we have following steps:
+
+### When using Ingress
+
+We have following steps:
 
 1. DNS targeting a VIP (used later by vhost) 
 2. Load balancer (such as F5) exposing a VIP with pool members being (Nodes -> cluster nodes, Port -> NodePort). 
 Note [1 + 2] can be replaced by a DNS round robin. I assume Load balancer could be configured via Kubernetes with service type load balancer.
-3. The load balancer will actually target a [NodePort service type](./service_deep_dive.md#NodePort) pointing to Ingress controller pod (L3 routing).
-Alternative (2+3). OR we can also [bind ingress controller](#note-on-ingress) on each node directly to port 80/443 (privileged port) to [bypass `kube-proxy`](#Implementation-details)
+3. The load balancer will actually target a [NodePort service type](#option-a-use-nodeport) pointing to Ingress controller pod (L3 routing).
+Alternative (2+3): OR we can also [bind ingress controller](#option-b-bind-a-port-in-node) on each node directly to port 80/443 (privileged port) to [bypass `kube-proxy`](#Implementation-details)
 4. Ingress controller redirect to correct service / endpoint / pod using vhost header (L7 routing). 
 Ingress directly watch svc/ep and target ep directly, thus kube-proxy is also not used at that level unlike a NodePort.
 
@@ -1115,7 +1148,8 @@ Here we can see AWS is doing load balancing in front of the ingress: https://aws
 Here: https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-use-linux-nameserver-part-f.md
 We describe same step without load balancer, using Minikube ingress and NAT.
 
-### When using NodePort
+
+### When using NodePort k8s svc type
 
 An alternative to ingress could be to only use a [load balancer service type](./service_deep_dive.md#LoadBalancer) which relies on `NodePort`.
 Or load balance manually on the NodePort.
@@ -1148,8 +1182,24 @@ But from https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-
 A solution could be to use load  balancer health check on the NodePort.  
 
 [When using ingress](#when-using-ingress), with `NodePort` in step 3, we have extra hop (`kube-proxy` + depending on `externalTrafficPolicy`). 
-Ingress with NodePort is a particular case of NodePort.  <!-- clear -->
-However Ingress controller being a `DaemonSet`, we always have a pod running on each node.
+
+See details here: https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-nodeport and impact on [NAT](#externaltrafficpolicy).
+
+
+### When using LoadBalancer k8s service type
+
+It is a superset of `NodePort`.
+Usually provisonned load balancer integrates the health check
+
+See https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-loadbalancer
+
+> setting the same service.spec.externalTrafficPolicy field to Local forces nodes without Service endpoints to remove themselves from the list of nodes eligible for loadbalanced traffic by deliberately failing health checks.
+
+### Particular case 
+
+[Ingress with NodePort](#when-using-ingress) is a particular case of [NodePort](#when-using-nodeport-k8s-svc-type).  <!-- clear -->
+However Ingress controller being a `DaemonSet`, we always have a pod running on each node!
+It avoids issue with `ExternalTrafficPolicy` which can be local.
  
 I recommend to read: 
 - https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-policies
@@ -1170,11 +1220,13 @@ Next: [F5 integration](./k8s_f5_integration.md) where F5 ingress in cluster mode
 
 From doc: https://kubernetes.io/docs/tutorials/services/source-ip/: external traffic policy has an impact on source ip.
 
-In section above when using NodePort has 2 features:
-- via k8s load balancer service type (which is based on NodePort): https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-loadbalancer
-- or load balance manually on NodePort: https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-nodeport
+- [load balance manually on NodePort](#when-using-nodeport-k8s-svc-type): https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-nodeport
+
+- via [k8s load balancer service type (which is based on NodePort)](#when-using-loadbalancer-k8s-service-type): https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-loadbalancer
 
 We had mentioned that load balancer could check health. They this is what [GKE is doing](https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-loadbalancer).
+
+*See strong link with private script: certificate/certificate.md#note-on-route-and-service-update-june-2023*
 
 #### Mirror
 
@@ -1219,6 +1271,8 @@ https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-app
 So in this case [if using ingress with NodePort in step 3](#when-using-ingress) we would apply NAT at box and inside the cluster.
 Here we details internal behavior.
 
+See https://github.com/scoulomb/docker-under-the-hood/tree/main/NAT-deep-dive-appendix
+
 <!-- only this CASE imo, ingress where bind controller on privileged port has no NAT inside cluster -->
 
 <!-- more links in seed which is in comment of component mapping here
@@ -1251,9 +1305,11 @@ ssh 	TCP 	Port 	22 	192.168.1.32 	22
 - Get your public IP
 http://192.168.1.1/state/wan	
 109.29.148.109
--->n.
+-->
 
 ## hostNetwork: true
+
+
 
 ### Try to deploy a pod with hostNetwork
 
