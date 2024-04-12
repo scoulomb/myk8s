@@ -1157,6 +1157,8 @@ An alternative to ingress could be to only use
 - A NodePort service and load balance manually on the cluster Nodes
 - a [load balancer service type](./service_deep_dive.md#LoadBalancer) which relies on `NodePort` and use infra provisionned LB
 
+We have alternative to use [hostPort](#host-port), which is `bind` equivalent.
+
 Thus we would use the `kube-proxy`.
 
 In details we have
@@ -1258,6 +1260,8 @@ We can have a F5 in front Azure load balancer, and with TM DNS reslution to Azur
 So to complement with full picture 
 - [above when-using-nodeport-k8s-svc-type](#when-using-nodeport-k8s-svc-type)
 We have: `F5 Port -> AZ LB Port -> NodePort in control plane-kubeproxy (-> endpoint ip/port=container port in control plane) -> Container target Port`. (when NodePort, svc type can be lb)
+
+We have alternative to use [hostPort](#host-port), which is `bind` equivalent.
 
 - [above when-using-ingress](#when-using-ingress)
 We have: `F5 Port -> AZ LB Port -> NodePort-kubeproxy xor bindport -> HA proxy targetport -> Ingress deifnition in control plane -> service port (kube proxy) (-> endpoint ip/port=container port in control plane) -> Container target Port`. (when NodePort, svc type can be lb)
@@ -1918,3 +1922,8 @@ where it is at ingress, pod level but could be at lb -->
 # Understanding the internals
 
 See [Appendix on internals](appendix_internals.md).
+
+
+<!--
+[](#cloud-edgeand-pop) -> concluded and hostport update OK
+This is ccl OK and consistent other doc, as hoostport is different OK -->
