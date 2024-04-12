@@ -1041,24 +1041,26 @@ With the 2 deployment modes described in the doc:
 
 #### Option A: use `NodePort` 
 
-(or `LoadBalancer` service type which is a super sry)
+(or `LoadBalancer` service type which is a super set)
 
 > The Service will expose two NodePorts which allow access to the ingress and the web interface. 
 
 => `kube-proxy` is used.
 
 
-**We use a `Deployment` + 2 service [`NodePort`](#nodeport) for the ingress: https://doc.traefik.io/traefik/v1.7/user-guide/kubernetes/#deploy-traefik-using-a-deployment-or-daemonset**
+**We use a `Deployment` + a service [`NodePort`](#nodeport) with 2 ports for the ingress: https://doc.traefik.io/traefik/v1.7/user-guide/kubernetes/#deploy-traefik-using-a-deployment-or-daemonset**
+
+
+#### Option B: bind a port in Node
+
+
+**We use `DaemonSet` + `NET_BIND_SERVICE` capability + container `hostPort`.**
 
 - > This will create a Daemonset that uses privileged ports 80/8080 on the host. This may not work on all providers, but illustrates the static (non-NodePort) hostPort binding.
   > The traefik-ingress-service can still be used inside the cluster to access the DaemonSet pods. 
 
 => `kube-proxy` is NOT used.
 
-#### Option B: bind a port in Node
-
-
-**We use `DaemonSet` + `NET_BIND_SERVICE` capability + container `hostPort`.**
 
 We need a `DaemonSet` to have the ingress on each node (as we do not use `Service` here even if created in doc example: https://doc.traefik.io/traefik/v1.7/user-guide/kubernetes/#deploy-traefik-using-a-deployment-or-daemonset but quoting it
 > The traefik-ingress-service can still be used inside the cluster to access the DaemonSet pods
@@ -1132,14 +1134,14 @@ We have following steps:
 1. DNS targeting a VIP (used later by vhost) 
 2. Load balancer (such as F5) exposing a VIP with pool members being (Nodes -> cluster nodes, Port -> NodePort). 
 Note [1 + 2] can be replaced by a DNS round robin. I assume Load balancer could be configured via Kubernetes with service type load balancer.
-3. The load balancer will actually target a [NodePort service type](#option-a-use-nodeport) pointing to Ingress controller pod (L3 routing).
+3. The load balancer will actually target a [**NodePort**](#option-a-use-nodeport) pointing to Ingress controller pod (L3 routing). If service type is **LoadBalancer**, LB is provisionned by infrastructure.
 Alternative (2+3): OR we can also [bind ingress controller](#option-b-bind-a-port-in-node) on each node directly to port 80/443 (privileged port) to [bypass `kube-proxy`](#Implementation-details)
 4. Ingress controller redirect to correct service / endpoint / pod using vhost header (L7 routing). 
 Ingress directly watch svc/ep and target ep directly, thus kube-proxy is also not used at that level unlike a NodePort.
 
 (Note endpoints were created by endpoint controller based on pod and service label, iptable updated by kube-proxy based on endpoints and service )
 
-So we have until until 3 levels of indirection, but usually only 2 because `kube-proxy` is bypassed. 
+So we have until until 3 internal levels of indirection (LB -> KubeProxy -> NodePort -> Ingress -> Pod ), but usually only 2 because `kube-proxy` is bypassed. 
 
 I assume OpenShift route is the Alternative (2+3).
 
@@ -1151,9 +1153,32 @@ We describe same step without load balancer, using Minikube ingress and NAT.
 
 ### When using NodePort k8s svc type
 
-An alternative to ingress could be to only use a [load balancer service type](./service_deep_dive.md#LoadBalancer) which relies on `NodePort`.
-Or load balance manually on the NodePort.
+An alternative to ingress could be to only use
+- A NodePort service and load balance manually on the cluster Nodes
+- a [load balancer service type](./service_deep_dive.md#LoadBalancer) which relies on `NodePort` and use infra provisionned LB
+
 Thus we would use the `kube-proxy`.
+
+In details we have
+
+- Definition of service in control plane
+  - -> KubeProxy to open NodePort (nodePort) on all nodes of the cluster to container target port
+- In service we can also specify load balancer port (dependent on implem, see: https://kubernetes.io/docs/concepts/services-networking/service/#loadbalancer)
+
+See https://matthewpalmer.net/kubernetes-app-developer/articles/kubernetes-ports-targetport-nodeport-service.html
+
+> nodePort
+> This setting makes the service visible outside the Kubernetes cluster by the node’s IP address and the port number declared in this property. The service also has to be of type NodePort (if this field isn’t specified, Kubernetes will allocate a node port automatically).
+
+> port
+> Expose the service on the specified port internally within the cluster. That is, the service becomes visible on this port, and will send requests made to this port to the pods selected by the service.
+
+> targetPort
+> This is the port on the pod that the request gets sent to. Your application needs to be listening for network requests on this port for the service to work.
+
+So we have for instance with Azure: `AZ LB Port -> NodePort -> Container target Port`.
+
+### External traffic policy
 
 We can also force NodePort to route to local using field [service.spec.externalTrafficPolic](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/#preserving-the-client-source-ip).
 This avoids extra hop on another node and SNAT.
@@ -1197,9 +1222,9 @@ See https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-servi
 
 ### Particular case 
 
-[Ingress with NodePort](#when-using-ingress) is a particular case of [NodePort](#when-using-nodeport-k8s-svc-type).  <!-- clear -->
+[Ingress with NodePort (Load Balancer) service type](#when-using-ingress) is a particular case of [NodePort (LoadBalancer) service type](#when-using-nodeport-k8s-svc-type).  <!-- clear -->
 However Ingress controller being a `DaemonSet`, we always have a pod running on each node!
-It avoids issue with `ExternalTrafficPolicy` which can be local.
+It avoids issue with `ExternalTrafficPolicy` which can be local. (until the ingress controller)
  
 I recommend to read: 
 - https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-policies
@@ -1226,7 +1251,18 @@ From doc: https://kubernetes.io/docs/tutorials/services/source-ip/: external tra
 
 We had mentioned that load balancer could check health. They this is what [GKE is doing](https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-loadbalancer).
 
-*See strong link with private script: certificate/certificate.md#note-on-route-and-service-update-june-2023*
+
+#### Cloud edge/and POP
+
+We can have a F5 in front Azure load balancer, and with TM DNS reslution to Azure LB.
+So to complement picture drawn [above](#when-using-nodeport-k8s-svc-type)
+We have
+
+`F5 Port -> AZ LB Port -> NodePort -> Container target Port`.
+
+
+**See strong link with private script: private_script/blob/main/Links-mig-auto-cloud/listing-use-cases/listing-use-cases-appendix.md#pre-req**
+
 
 #### Mirror
 
@@ -1266,12 +1302,20 @@ What happens when we use Internet
 
 What happens when we configure NAT on the box
 
+See here SNAT@home/DNAT@home: https://github.com/scoulomb/docker-under-the-hood/tree/main/NAT-deep-dive-appendix#cisco-nat-classification
+
 Reverse NAT is similar to this:
 https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-use-linux-nameserver-part-f.md#analysis
 So in this case [if using ingress with NodePort in step 3](#when-using-ingress) we would apply NAT at box and inside the cluster.
-Here we details internal behavior.
 
-See https://github.com/scoulomb/docker-under-the-hood/tree/main/NAT-deep-dive-appendix
+Here we details internal behavior: https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-nodeport
+
+The SNAT is NO SRC
+Similar to F5 to Node described here: https://github.com/scoulomb/docker-under-the-hood/tree/main/NAT-deep-dive-appendix#section-about-securenats
+> This is not same SNAT as @home.. It is SNAT between F5 and application (gateway).
+
+And DNAT same as @home.
+
 
 <!-- only this CASE imo, ingress where bind controller on privileged port has no NAT inside cluster -->
 
