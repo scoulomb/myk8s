@@ -1135,7 +1135,7 @@ We have following steps:
 2. Load balancer (such as F5) exposing a VIP with pool members being (Nodes -> cluster nodes, Port -> NodePort). 
 Note [1 + 2] can be replaced by a DNS round robin. I assume Load balancer could be configured via Kubernetes with service type load balancer.
 3. The load balancer will actually target a [**NodePort**](#option-a-use-nodeport) pointing to Ingress controller pod (L3 routing). If service type is **LoadBalancer**, LB is provisionned by infrastructure.
-Alternative (2+3): OR we can also [bind ingress controller](#option-b-bind-a-port-in-node) on each node directly to port 80/443 (privileged port) to [bypass `kube-proxy`](#Implementation-details)
+Alternative (2+3): OR we can also [bind ingress controller](#option-b-bind-a-port-in-node) on each node directly to port 80/443 (privileged port) to [bypass `kube-proxy`](#Implementation-details). It uses [hostPort](#host-port).
 4. Ingress controller redirect to correct service / endpoint / pod using vhost header (L7 routing). 
 Ingress directly watch svc/ep and target ep directly, thus kube-proxy is also not used at that level unlike a NodePort.
 
@@ -1255,15 +1255,20 @@ We had mentioned that load balancer could check health. They this is what [GKE i
 #### Cloud edge/and POP
 
 We can have a F5 in front Azure load balancer, and with TM DNS reslution to Azure LB.
-So to complement picture drawn
+So to complement with full picture 
 - [above when-using-nodeport-k8s-svc-type](#when-using-nodeport-k8s-svc-type)
-We have: `F5 Port -> AZ LB Port -> NodePort in control plane-kubeproxy -> Container target Port`. (when NodePort, svc type can be lb)
+We have: `F5 Port -> AZ LB Port -> NodePort in control plane-kubeproxy (-> endpoint ip/port=container port in control plane) -> Container target Port`. (when NodePort, svc type can be lb)
 
 - [above when-using-ingress](#when-using-ingress)
-We have: `F5 Port -> AZ LB Port -> NodePort-kubeproxy xor bindport -> HA proxy targetport -> Ingress deifnition in contrpl plane -> service port (kube proxy) -> Container target Port`. (when NodePort, svc type can be lb)
+We have: `F5 Port -> AZ LB Port -> NodePort-kubeproxy xor bindport -> HA proxy targetport -> Ingress deifnition in control plane -> service port (kube proxy) (-> endpoint ip/port=container port in control plane) -> Container target Port`. (when NodePort, svc type can be lb)
+
+
+For bind port refer to [hostPort](#host-port), Note in doc they define a service but seems more documentation: https://github.com/scoulomb/traefik/blob/v1.7/docs/user-guide/kubernetes.md 
+
+And we can have DNS between F5 to AZ LB for traffic swithc.
 
 **See strong link with private script: private_script/blob/main/Links-mig-auto-cloud/listing-use-cases/listing-use-cases-appendix.md#pre-req**
-
+<!-- dns resolv Fix OK stop here -->
 
 #### Mirror
 
@@ -1357,6 +1362,9 @@ http://192.168.1.1/state/wan
 
 
 ### Try to deploy a pod with hostNetwork
+
+
+**This is exactly what we used with bind ingress, see [](#cloud-edgeand-pop)
 
 ````shell script
 ssh sylvain@109.29.148.109
