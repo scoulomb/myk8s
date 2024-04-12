@@ -1255,11 +1255,12 @@ We had mentioned that load balancer could check health. They this is what [GKE i
 #### Cloud edge/and POP
 
 We can have a F5 in front Azure load balancer, and with TM DNS reslution to Azure LB.
-So to complement picture drawn [above](#when-using-nodeport-k8s-svc-type)
-We have
+So to complement picture drawn
+- [above when-using-nodeport-k8s-svc-type](#when-using-nodeport-k8s-svc-type)
+We have: `F5 Port -> AZ LB Port -> NodePort in control plane-kubeproxy -> Container target Port`. (when NodePort, svc type can be lb)
 
-`F5 Port -> AZ LB Port -> NodePort -> Container target Port`.
-
+- [above when-using-ingress](#when-using-ingress)
+We have: `F5 Port -> AZ LB Port -> NodePort-kubeproxy xor bindport -> HA proxy targetport -> Ingress deifnition in contrpl plane -> service port (kube proxy) -> Container target Port`. (when NodePort, svc type can be lb)
 
 **See strong link with private script: private_script/blob/main/Links-mig-auto-cloud/listing-use-cases/listing-use-cases-appendix.md#pre-req**
 
