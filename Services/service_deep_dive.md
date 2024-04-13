@@ -1157,7 +1157,7 @@ An alternative to ingress could be to only use
 - A NodePort service and load balance manually on the cluster Nodes
 - a [load balancer service type](./service_deep_dive.md#LoadBalancer) which relies on `NodePort` and use infra provisionned LB
 
-We have alternative to use [hostPort](#host-port), which is `bind` equivalent.
+We have alternative to use [hostPort](#host-port), which is exactly what what is used by`bind`. (capabilities not required if container privileged: https://unofficial-kubernetes.readthedocs.io/en/latest/concepts/policy/container-capabilities/)
 
 Thus we would use the `kube-proxy`.
 
