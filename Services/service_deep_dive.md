@@ -104,6 +104,8 @@ deploy1      192.168.16.171:80,192.168.16.172:80,192.168.16.173:80   5m5s
 
 ## Service internal
 
+Let's deep dive on how `ClusterIP` service type is working.
+
 `kube-proxy` watches endpoints and services to updates iptable and thus redirect to correct pod.
 
 It has several [modes](https://kubernetes.io/docs/concepts/services-networking/service/#virtual-ips-and-service-proxies)
@@ -143,6 +145,45 @@ vagrant@k8sMaster:~$ sudo iptables-save | grep 192.168.16.17
 -A KUBE-SEP-SIUA6YONSJ3WPF22 -s 192.168.16.173/32 -j KUBE-MARK-MASQ
 -A KUBE-SEP-SIUA6YONSJ3WPF22 -p tcp -m tcp -j DNAT --to-destination 192.168.16.173:80
 ````
+
+See details of KubeProxy in this blog post: https://kodekloud.com/blog/kube-proxy/ (local copy at [resources](./resources/Kube-Proxy:%20What%20Is%20It%20and%20How%20It%20Works.pdf))
+
+> Kube-proxy helps with Service to pod mapping by maintaining a network routing table that maps Service IP addresses to the IP addresses of the pods
+> that belong to the Service.
+> When a request is made to a Service, kube-proxy uses this mapping to forward the request to a Pod belonging to the Service.
+
+In summary here is how `kube-proxy` works
+
+- Service is `SVC01` created with a `cluster IP`. Service has a label selector `app: X` 
+- New pods are created with a label `app: X`. Those pods have a pod IP. Assume `pod_1 ip_1`. `pod_2 ip_2` 
+- API server triggers creation of an endpoint with pod's label `app: X`. Assume `EP01`, `EP02` respectively to `pod_1 ip_1`. `pod_2 ip_2`
+- API server will check POD to be associated to service `svc01`. It will look for endpoints (pods) matching the label selector `app: X`.
+Here `EP01`, `EP02`
+- API server will map the `SVC01` / `cluster IP` to `EP01`, `EP02`
+- We want this mapping to be implemented on the network so that traffic coming to the IP of `SVC01` can be forwarded to `EP01` or `EP02`.
+- To achieve that, the API server advertises the new mapping to the Kube-proxy on **each node**, which then applies it as an internal rule.
+- This rules is applied as a set of **DNAT rules** 
+- So that a request to `cluster IP` coming from another POD inside to same cluster is sent to pod `EP01` xor `EP02` <=> `pod_1 ip_1` xor `pod_2 ip_2`
+- Targeted POD can be in a different node of the source pod node
+
+Note the port is set using `port` (target port of svc) and `targetPort` (port targeted after the svc) in service manifest: https://kubernetes.io/docs/concepts/services-networking/service/
+> A Service can map any incoming port to a targetPort. By default and for convenience, the targetPort is set to the same value as the port field.
+
+Or equivalent via `expose`: https://jamesdefabia.github.io/docs/user-guide/kubectl/kubectl_expose/
+
+See [use different port below](#use-a-different-port-)
+
+ **DNAT rules details** 
+
+````shell
+iptables -t nat -L PREROUTING -> KUBE-SERVICES
+iptables -t nat -L KUBE-SERVICES -> Chain with target IP of svc (cluster IP) -> <CHAIN_NAME> = <KUBE-SVC-XXXX>
+iptables -t nat -L  <KUBE-SVC-XXXX> -> Chain with EPO1, EPO2 -> <CHAIM_NAME> = <KUBE-SEP-XXX>. SEP=Service EndPoint
+iptables -t nat -L   <KUBE-SEP-XXX> -> DNAT rule to POD IP and service target Port (pod IP is cut in KodeCloud doc but well visible here: https://ronaknathani.com/blog/2020/07/kubernetes-nodeport-and-iptables-rules/.)
+````
+
+See [NodePort](#NodePort) chain extension.
+
 
 ## Svc discovery by environment variable or DNS within a POD
 
@@ -258,6 +299,7 @@ target-port can be a "named port"
 https://kubernetes.io/docs/concepts/services-networking/service/#defining-a-service
 So different pod could use a different port (not tested)
 
+See comment on port in [service internal](#service-internal)
 
 ## Other type of service
 
@@ -265,8 +307,43 @@ Service we have seen above is `ClusterIP`.
 
 ### NodePort
 
-NodePort is a simple connection from a high-port routed to a ClusterIP 
-The NodePort is accessible via calls to <NodeIP>:<NodePort>.
+`NodePort` is a simple connection from a high-port routed to a `ClusterIP`. `NodePort` service type is an extension of `ClusterIP` service type.
+
+See [cluster IP details](#service-internal)
+
+The NodePort is accessible via calls to `<NodeIP>:<NodePort>`.
+
+`NodePort` is following the same mechanism as `ClusterIP` service type describe in [service internals](#service-internal) using kube-proxy.
+Port is added to DNAT rules with a new chain.
+
+````shell
+iptables -t nat -L PREROUTING -> KUBE-SERVICES
+iptables -t nat -L KUBE-SERVICES -n -> Chain KUBE-NODEPORTS and Chain with target IP of svc (cluster IP) -> <CHAIN_NAME> = <KUBE-SVC-XXXX>
+iptables -t nat -L KUBE-NODEPORTS -n  -> And we find the svc again <KUBE-SVC-XXXX>. which matches the one with the cluster IP (clusterIP `10.0.237.3` and `KUBE-SVC-GHSLGKVXVBRM4GZX` in the example)
+iptables -t nat -L <KUBE-SVC-XXXX> -> Chain with EPO1, EPO2 -> <CHAIM_NAME> = <KUBE-SEP-XXX>. SEP=Service EndPoint
+iptables -t nat -L  <KUBE-SEP-XXX> -> DNAT rule to POD IP and service target Port
+````
+
+Here we have `<KUBE-SVC-XXXX>` which matches `spec.ports.clusterIP` in the routing chain, but not use since we access this chain from `KUBE-NODEPORTS`.
+
+Examples: https://ronaknathani.com/blog/2020/07/kubernetes-nodeport-and-iptables-rules/. <!-- check IP match stop here OK YES -->
+
+Local copy in [resources](./resources/Kubernetes%20NodePort%20and%20iptables%20rules%20%7C%20Ronak%20Nathani.pdf).
+
+Thus `NodePort` effect is to add additional Chain.
+Other chain are intact compared to a standard `ClusterIP` svc.
+Also note only the last chain has a chain of type `DNAT`, other types are `Chain`,
+
+Kube-proxy is also listening on NodePort
+
+````shell
+$ sudo lsof -i:30450
+COMMAND     PID USER   FD   TYPE   DEVICE SIZE/OFF NODE NAME
+hyperkube 11558 root    9u  IPv6 95841832      0t0  TCP *:30450 (LISTEN)
+
+$ ps -aef | grep -v grep | grep 11558
+root      11558  11539  0 Jul02 ?        00:06:37 /hyperkube kube-proxy --kubeconfig=/var/lib/kubelet/kubeconfig --cluster-cidr=10.244.0.0/16 --feature-gates=ExperimentalCriticalPodAnnotation=true --v=3
+````
 
 To ensure NodePort is in the range of port forwarded by the VM, we will add [following line](http://www.thinkcode.se/blog/2019/02/20/kubernetes-service-node-port-range) `--service-node-port-range=32000-32000` in command section of `/etc/kubernetes/manifests/kube-apiserver.yaml`
 
@@ -322,11 +399,14 @@ scoulomb@XXXXX MINGW64 ~
 $ curl --silent 127.0.0.1:32000 | grep  "<title>"
 <title>Welcome to nginx!</title>
 ````
+
+`NodePort ` can be found in manifest: https://kubernetes.io/docs/concepts/services-networking/service/#nodeport-custom-port
+
 ### LoadBalancer
 
 Doc: https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/
 
-Creating a LoadBalancer service generates a NodePort.
+Creating a LoadBalancer service generates a NodePort. `LoadBalancer` service type is an extension of [`NodePort`](#nodeport) service type. 
 It sends an asynchronous call to an external load balancer, 
 Usually one of a cloud provider. 
 The External-IP value will remain in a <Pending> state until the load balancer returns. 
@@ -354,6 +434,17 @@ There will be two pool members associated with the load balancer:
 These are the IP addresses of the nodes in the Kubernetes cluster.
 
 We could setup load balancer manually.
+
+We have seen following port
+- [clusterIP](#service-internal)
+  - `ports.port`
+  - `ports.targetPort`
+- [NodePort](#Nodeport)
+  - `ports.nodePort`
+
+I did not see a field for load balancer port, most implem seem to use same port as `ports.port` as virtual lb port: https://mcorbin.fr/posts/2021-12-13-kubernetes-external-policy/
+
+Also `LoadBalancer` Service type can create a `healthCheckNodePort`
 
 ### Note on load balancer svc
 
@@ -657,6 +748,67 @@ Here we can sere curl is working.
 
 <!-- traceroute and ping seems to work well for non headless unlike headless. STOP HERE -->
 <!-- externalName can be seen as without selector OK -->
+
+
+### To sum-up
+<!-- here above all ccl - CCL -->
+
+We have 4 service types
+
+#### [`ClusterIP`](#service-internal)
+
+````
+Internal Traffic -> Worker Node [svc.spec.clusterIP, svc.spec.ports.port]-> DNAT rules generated from Kube-Proxy using (svc.spec.clusterIP and svc.ports.port) to (podId, spec.ports.TargetPort) ->[podIp, spec.ports.TargetPort] distributing to set of PODs  
+````
+POD can be in same worker node or not. Same apply for other service type after DNAT rules, intra-cluster node to node is no shown in this representation
+
+#### [`NodePort`](#NodePort) = `ClusterIP` + high routed port
+
+
+````
+Internal Traffic -> Worker Node [1 WorkerNode IP, spec.ports.NodePort] -> DNAT rules generated from Kube-Proxy using (svc.ports.NodePort) to (podId, spec.ports.TargetPort) ->[podIp, spec.ports.TargetPort] distributing to set of PODs  
+````
+
+As explained in [`NodePort`](#NodePort), we have  `svc.spec.clusterIP` in the chain but linking is done via `svc.ports.NodePort`
+
+We can load balancer manually across worker nodes
+
+
+
+#### [`LoadBalancer`](#LoadBalancer) = `NodePort` + LB
+
+
+````
+External Traffic -> Provisioned Azure Load Balancer  [External LB IP, spec.ports.port] ->  Worker Node [1 WorkerNode IP, spec.ports.NodePort] -> DNAT rules generated from Kube-Proxy using (svc.ports.NodePort) to (podId, spec.ports.TargetPort) -> [podIp, spec.ports.TargetPort] distributing to set of PODs  
+````
+
+As explained in [`NodePort`](#NodePort), we have  `svc.spec.clusterIP` in the chain but linking is done via `svc.ports.NodePort`
+
+We give example of AZ LB but each cloud provider has its implem.
+
+External LB IP can be provided: https://learn.microsoft.com/en-us/azure/aks/load-balancer-standard#restrict-inbound-traffic-to-specific-ip-ranges and `service.beta.kubernetes.io/azure-load-balancer-ipv4`.
+
+See summary of port in load balancer section [here](#loadbalancer)
+
+#### External name 
+
+No proxying, full GTM
+
+````
+Internal Traffic - - -> DNS resolution `<service-name>.svc` to CNAME
+                 - - -> Resolve CNAME to IP
+                 -> Targets IP
+````
+        
+
+
+NB: [Headless services](#headless-service) and [service without selector](#service-without-a-selector) can be combined together, and also with the service type.
+
+Each service has related internal DNS record in `<service-name>.svc` to `clusterIP`
+
+Looking at: https://learn.microsoft.com/en-us/azure/aks/concepts-network-services, we understand well and see simplification made! (forked here: https://github.com/scoulomb/azure-aks-docs/blob/main/articles/aks/concepts-network-services.md)
+
+<!-- summary and here fully ccl OK OKCF -->
 
 ----
 # Ingresses
