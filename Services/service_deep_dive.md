@@ -1392,6 +1392,8 @@ External Traffic ->  Provisioned (Azure) Load Balancer  [External LB IP, spec.po
 Note the usage of container port in podTemplate and not of service, which here is not for documentation, 
 More details on hostPort here: https://lambda.mu/hostports_and_hostnetwork/
 
+Usually privileged port is used 80/443.
+
 #### Wrap together : Ingress possibilities
 
 [Northbound with (option A or B)](#client-to-ingress-itself-is-a-using-standard-k8s-service-but-it-can-also-bind-port-on-node-) + [southbound](#traefik-to-pod)
@@ -2059,7 +2061,7 @@ To access to an OpenShift cluster we can use
 
 - [Ingress](#implementation-details)
   - Northbound
-    - Option A: which uses NodePort/LoadBalancer service type (see bullet above)
+    - [Option A](#option-a-use-nodeport-): which uses NodePort/LoadBalancer service type (see bullet above)
 
           ````
           Northbound:
@@ -2068,7 +2070,7 @@ To access to an OpenShift cluster we can use
           -> [podIp, spec.ports.TargetPort] distributing to set of Ingress PODs 
           ````
 
-    - Option B: which uses hostPort (see bullet above)
+    - [Option B](#option-b-bind-a-port-in-node): which uses hostPort (see bullet above)
 
           ````
           External Traffic ->  Provisioned (Azure) Load Balancer  [External LB IP, spec.ports.port] (svc type is LB) XOR LB not operated by k8s XOR NO LB
