@@ -446,6 +446,18 @@ I did not see a field for load balancer port, most implem seem to use same port 
 
 Also `LoadBalancer` Service type can create a `healthCheckNodePort`
 
+From doc. See https://matthewpalmer.net/kubernetes-app-developer/articles/kubernetes-ports-targetport-nodeport-service.html
+
+> nodePort
+> This setting makes the service visible outside the Kubernetes cluster by the node’s IP address and the port number declared in this property. The service also has to be of type NodePort (if this field isn’t specified, Kubernetes will allocate a node port automatically).
+
+> port
+> Expose the service on the specified port internally within the cluster. That is, the service becomes visible on this port, and will send requests made to this port to the pods selected by the service.
+
+> targetPort
+> This is the port on the pod that the request gets sent to. Your application needs to be listening for network requests on this port for the service to work.
+
+
 ### Note on load balancer svc
 
 <!-- discussion dl jum2020 -->
@@ -498,6 +510,106 @@ confirmed by ales nosek
 
 In azure we can set the load balancer IP: https://docs.microsoft.com/en-us/azure/aks/static-ip
 
+
+
+### Note on External traffic policy
+
+#### What it is 
+
+We can also force NodePort to route to local using field [service.spec.externalTrafficPolic](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/#preserving-the-client-source-ip).
+This avoids extra hop on another node and SNAT.
+
+
+````shell script
+➤ sudo kubectl explain service.spec.externalTrafficPolicy
+KIND:     Service
+VERSION:  v1
+
+FIELD:    externalTrafficPolicy <string>
+
+DESCRIPTION:
+     externalTrafficPolicy denotes if this Service desires to route external
+     traffic to node-local or cluster-wide endpoints. "Local" preserves the
+     client source IP and avoids a second hop for LoadBalancer and Nodeport type
+     services, but risks potentially imbalanced traffic spreading. "Cluster"
+     obscures the client source IP and may cause a second hop to another node,
+     but should have good overall load-spreading.
+````
+
+
+But from https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-policies
+> With this architecture, it’s important that any ingress traffic lands on nodes that are running the corresponding pods for that service, otherwise, the traffic would be dropped
+
+A solution could be to use load balancer health check on the NodePort. This is what [GKE is doing](https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-loadbalancer).
+
+From doc: https://kubernetes.io/docs/tutorials/services/source-ip/: external traffic policy has an impact on source ip.
+See details here: https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-nodeport and impact on [NAT](#externaltrafficpolicy).
+
+ 
+I recommend to read: 
+- https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-policies
+- https://web.archive.org/web/20210205193446/https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-policies
+
+Note this is link to that article where we had seen cluster ip
+https://github.com/scoulomb/myDNS/blob/2b846f42f7443e84fc667ae3f3f66188f1c69259/2-advanced-bind/1-bind-in-docker-and-kubernetes/2-understand-source-ip-in-k8s.md
+and it references this doc
+https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-clusterip
+When they talk on source ip preservation on node port and lb service depending on external traffic policy.
+Note as mention externalTrafficPolicy does not apply to clusterIP (internal OK).
+
+
+
+#### Mirror server
+
+To observe this they use a mirror server.
+We had made one here: https://github.com/scoulomb/http-over-socket
+
+<!--
+here also MAES orchestrator has one Mirror.java
+and referenced in https://github.com/scoulomb/private_script/blob/main/sei-auto/certificate/certificate.md is OK, no impact
+already seen this https://kubernetes.io/docs/tutorials/services/source-ip osef
+-->
+
+See also: https://matthewpalmer.net/kubernetes-app-developer/articles/kubernetes-networking-guide-beginners.html
+<!-- mirrored https://github.com/scoulomb/private_script/blob/main/sei-auto/certificate/certificate-doc/k8s-networking-guide/network-guide.md -->
+
+#### When not done 
+
+In K8s doc when not using `externalTrafficPolicy` with `NodePort` and `LoadBalancer` service type,
+they mention we are doing:
+- `SNAT` (replaces the source IP address (SNAT) in the packet with its own IP address)
+- + `DNAT` (replaces the destination IP on the packet with the pod IP)
+https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-nodeport
+
+What does it mean?
+
+From: https://superuser.com/questions/1410865/what-is-the-difference-between-nat-and-snat-dnat/1410870
+
+> "NAT" is a collective term for various translations - usually it's actually NAPT (involving the transport-layer port numbers as well).
+
+> Source NAT translates the source IP address,
+> usually when connecting from a private IP address to a public one ("LAN to Internet").
+
+What happens when we use Internet
+
+> Destination NAT translates the destination IP address,
+> usually when connecting from a public IP to a private IP (aka port-forwarding, reverse NAT, expose host, "public server in LAN").
+
+What happens when we configure NAT on the box
+
+See here SNAT@home/DNAT@home: https://github.com/scoulomb/docker-under-the-hood/tree/main/NAT-deep-dive-appendix#cisco-nat-classification
+
+Reverse NAT is similar to this:
+https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-use-linux-nameserver-part-f.md#analysis
+So in this case [if using ingress with NodePort in step 3](#when-using-ingress) we would apply NAT at box and inside the cluster.
+
+Here we details internal behavior: https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-nodeport
+
+The SNAT is NO SRC
+Similar to F5 to Node described here: https://github.com/scoulomb/docker-under-the-hood/tree/main/NAT-deep-dive-appendix#section-about-securenats
+> This is not same SNAT as @home.. It is SNAT between F5 and application (gateway).
+
+And DNAT same as @home.
 
 ### ExternalName
 
@@ -785,7 +897,8 @@ External Traffic -> Provisioned Azure Load Balancer  [External LB IP, spec.ports
 As explained in [`NodePort`](#NodePort), we have  `svc.spec.clusterIP` in the chain but linking is done via `svc.ports.NodePort`
 
 We give example of AZ LB but each cloud provider has its implem.
-We can use a NodePort and do own load balancing manually, it is equivalent to load balancer type, except that LB not automatically provisioned.
+
+Alternative is to use a NodePort and do own load balancing manually, it is equivalent to load balancer type, except that LB will not be automatically provisioned.
 
 External LB IP can be provided: https://learn.microsoft.com/en-us/azure/aks/load-balancer-standard#restrict-inbound-traffic-to-specific-ip-ranges and `service.beta.kubernetes.io/azure-load-balancer-ipv4`.
 
@@ -1234,8 +1347,8 @@ External Traffic ->  Provisioned (Azure) Load Balancer  [External LB IP, spec.po
 -> [podIp, spec.ports.TargetPort] distributing to set of Ingress PODs 
 ````
 
-Note: if we deploy Ingress as DaemonSet we can use local [external traffic policy](#external-traffic-policy)
-
+Note: if we deploy Ingress as DaemonSet we can use local [external traffic policy](#note-on-external-traffic-policy)
+since we always have a pod running on each node!
 
 **When using option A, it is well visible that Ingress is a particular case of [`NodePort`](#nodeport) or [`Loadbalancer`](#loadbalancer) service type**
 
@@ -1273,21 +1386,35 @@ It works as follows
 Northbound:
 External Traffic ->  Provisioned (Azure) Load Balancer  [External LB IP, spec.ports.port] (svc type is LB) XOR LB not operated by k8s XOR NO LB
 ->  Worker Node [1 WorkerNode IP, hostPort] -> DNAT rules generated (ipTable update by portMap CNI plugin) to (podId, podTemplate.spec.ports.containerPort)
--> [podIp, podTemplate.spec.ports.containerPor] distributing to the Ingress POD of the reached node 
+-> [podIp, podTemplate.spec.ports.containerPort] distributing to the Ingress POD of the reached node 
 ````
 
 Note the usage of container port in podTemplate and not of service, which here is not for documentation, 
 More details on hostPort here: https://lambda.mu/hostports_and_hostnetwork/
 
-#### Wrap together 
+#### Wrap together : Ingress possibilities
 
 [Northbound with (option A or B)](#client-to-ingress-itself-is-a-using-standard-k8s-service-but-it-can-also-bind-port-on-node-) + [southbound](#traefik-to-pod)
 
-#### SPOF: Single Point Of Failure 
-========================================================
-[WE ARE HERE EVERYTHING ABOVE IS SUPER CLEAR]
-========================================================
+#### Comments
 
+In front of the load balancer we can have a DNS.
+This DNS entry can be conveyed in the host header. This host header can be used by the ingress policy to identify the correct ingress rule to be applied.
+We can replace the load balancer by a round-robin DNS.
+In northbound part, LB is doing L3 routing whereas ingress is L7.
+
+Here: https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-use-linux-nameserver-part-f.md
+We describe similar without load balancer, using Minikube ingress and NAT.
+
+
+#### SPOF: Single Point Of Failure 
+<!-- above was ok -->
+
+To avoid SPOF, we load balance on all nodes where Traefik is running (all if [daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset)) which then redispatch to a pod potentially in different node?
+(or DNS load balancing)
+
+See this question: 
+https://stackoverflow.com/questions/60031377/load-balancing-in-front-of-traefik-edge-router
 
 ### OpenShift route (HA proxy)
 
@@ -1298,269 +1425,30 @@ From [OpenShift HA proxy doc](https://docs.okd.io/latest/architecture/networking
 > - A wrapper that watches endpoints and routes and causes a HAProxy reload based on changes
 > - A controller that builds the HAProxy configuration file based on routes and endpoints
 
-Thus it seems OpenShift route bypass also `kube-proxy`
+See this documentation: https://docs.redhat.com/en/documentation/openshift_container_platform/3.5/html/installation_and_configuration/setting-up-a-router
 
-## More details on Ingress configuration with Minikube
+OpenShift router use [option B](#option-b-bind-a-port-in-node). 
+
+Evidence in this doc: https://docs.redhat.com/en/documentation/openshift_container_platform/3.5/html/installation_and_configuration/setting-up-a-router#deploy-router-create-router
+
+```text
+oc get po <router-pod>  --template={{.status.hostIP}}
+```
+
+Also the F5 itself can be used as an Ingress: https://docs.redhat.com/en/documentation/openshift_container_platform/3.5/html/installation_and_configuration/setting-up-a-router#f5-configuring-the-virtual-servers
+
+I will nor not enter into the details, this deprecated doc is [documenting (past?) integration](k8s_f5_integration.md))
+
+### More details on Ingress configuration with Minikube
 
 I this post we did a deep deep dive of Minikube ingress based on [Nginx ingress](https://github.com/kubernetes/website/issues/26137):
 https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-use-linux-nameserver-part-0.md (from part f).
 with certificate management.
 
-<!-- which is completed (and referenced in post) with a deep-dive on OpenShift route: https://github.com/scoulomb/private_script/tree/main/sei-auto -->
+<!-- which is completed (and referenced in post) with a deep-dive on OpenShift route: https://github.com/scoulomb/private_script/tree/main/sei-auto --> https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip
 
-## Single point of failure
 
-To avoid SPOF, we load balance on all nodes where Traefik is running (all if [daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset)) which then redispatch to a pod potentially in different node?
-(or DNS load balancing)
-
-
-
-See this question: 
-https://stackoverflow.com/questions/60031377/load-balancing-in-front-of-traefik-edge-router
-
-> Looking at OpenShift HA proxy or Traefik project: https://docs.traefik.io/. I can see Traefik ingress controller is deployed as a DaemonSet. It enables to route traffic to correct services/endpoints using virtual host.
-> Assuming I have a Kubernetes cluster with several nodes. How can I avoid to have a single point of failure?
-> Should I have a load balancer (or DNS load balancing), in front of my nodes?
-> If yes, does it mean that:
-> 1. Load balancer will send traffic to one node of k8s cluster
-> 2. Traefik will send the request to one of the endpoint/pods. Where this pod could be located in a different k8s node?
->
-> Does it mean there would be a level of indirection?
-> I am also wondering if the F5 cluster mode feature could avoid such indirection?
-> EDIT (post 2nd response): when used with [F5 Ingress resource](https://clouddocs.f5.com/containers/v2/kubernetes/kctlr-k8s-ingress-ctlr.html#set-a-default-shared-ip-address)
-
-Answers I got is:
-
-> You should have a load balancer (BIG IP from F5 or a software load balancer) for traefik pods. When client request comes in it will sent to one of the traefik pods by the load balancer. Once request is in the traefik pod traefik will send the request to cluster IP of the kubernetes workload pods based on ingress rules.You can configure L7 load balancing in traefik for your workload pods.Once the request is in clusterIP from there Kube proxy will perform L4 load balancing to your workload pods IPs.
-
-After correction on Kube-proxy made as a comment, and explained [here](#Implementation details), 2nd response:
-
-> You can have a load balancer (BIG IP from F5 or a software load balancer) for traefik pods. When client request comes in it will sent to one of the traefik pods by the load balancer. Once request is in the traefik pod traefik will send the request to IPs of the kubernetes workload pods based on ingress rules by getting the IPs of those pods from kubernetes endpoint API.You can configure L7 load balancing in traefik for your workload pods.
-> Using a software reverse proxy such as nginx and exposing it via a load balancer introduces an extra network hop from the load balancer to the nginx ingress pod.
-> Looking at the F5 docs BIG IP controller can also be used as ingress controller and I think using it that way you can avoid the extra hop.
-
-So answer is yes.
-
-
-### When using Ingress
-
-We have following steps:
-
-1. DNS targeting a VIP (used later by vhost) 
-2. Load balancer (such as F5) exposing a VIP with pool members being (Nodes -> cluster nodes, Port -> NodePort). 
-Note [1 + 2] can be replaced by a DNS round robin. I assume Load balancer could be configured via Kubernetes with service type load balancer.
-3. The load balancer will actually target a [**NodePort**](#option-a-use-nodeport) pointing to Ingress controller pod (L3 routing). If service type is **LoadBalancer**, LB is provisionned by infrastructure.
-Alternative (2+3): OR we can also [bind ingress controller](#option-b-bind-a-port-in-node) on each node directly to port 80/443 (privileged port) to [bypass `kube-proxy`](#Implementation-details). It uses [hostPort](#host-port).
-4. Ingress controller redirect to correct service / endpoint / pod using vhost header (L7 routing). 
-Ingress directly watch svc/ep and target ep directly, thus kube-proxy is also not used at that level unlike a NodePort.
-
-(Note endpoints were created by endpoint controller based on pod and service label, iptable updated by kube-proxy based on endpoints and service )
-
-So we have until until 3 internal levels of indirection (LB -> KubeProxy -> NodePort -> Ingress -> Pod ), but usually only 2 because `kube-proxy` is bypassed. 
-
-I assume OpenShift route is the Alternative (2+3).
-
-Here we can see AWS is doing load balancing in front of the ingress: https://aws.amazon.com/blogs/opensource/network-load-balancer-nginx-ingress-controller-eks/
-
-Here: https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-use-linux-nameserver-part-f.md
-We describe same step without load balancer, using Minikube ingress and NAT.
-
-
-### When using NodePort k8s svc type
-
-An alternative to ingress could be to only use
-- A NodePort service and load balance manually on the cluster Nodes
-- a [load balancer service type](./service_deep_dive.md#LoadBalancer) which relies on `NodePort` and use infra provisionned LB
-
-We have alternative to use [hostPort](#host-port), which is exactly what what is used by`bind`. (capabilities not required if container privileged: https://unofficial-kubernetes.readthedocs.io/en/latest/concepts/policy/container-capabilities/)
-
-Thus we would use the `kube-proxy`.
-
-In details we have
-
-- Definition of service in control plane
-  - -> KubeProxy to open NodePort (nodePort) on all nodes of the cluster to container target port
-- In service we can also specify load balancer port (dependent on implem, see: https://kubernetes.io/docs/concepts/services-networking/service/#loadbalancer)
-
-See https://matthewpalmer.net/kubernetes-app-developer/articles/kubernetes-ports-targetport-nodeport-service.html
-
-> nodePort
-> This setting makes the service visible outside the Kubernetes cluster by the node’s IP address and the port number declared in this property. The service also has to be of type NodePort (if this field isn’t specified, Kubernetes will allocate a node port automatically).
-
-> port
-> Expose the service on the specified port internally within the cluster. That is, the service becomes visible on this port, and will send requests made to this port to the pods selected by the service.
-
-> targetPort
-> This is the port on the pod that the request gets sent to. Your application needs to be listening for network requests on this port for the service to work.
-
-So we have for instance with Azure: `AZ LB Port -> NodePort -> Container target Port`.
-
-### External traffic policy
-
-We can also force NodePort to route to local using field [service.spec.externalTrafficPolic](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/#preserving-the-client-source-ip).
-This avoids extra hop on another node and SNAT.
-
-
-````shell script
-➤ sudo kubectl explain service.spec.externalTrafficPolicy
-KIND:     Service
-VERSION:  v1
-
-FIELD:    externalTrafficPolicy <string>
-
-DESCRIPTION:
-     externalTrafficPolicy denotes if this Service desires to route external
-     traffic to node-local or cluster-wide endpoints. "Local" preserves the
-     client source IP and avoids a second hop for LoadBalancer and Nodeport type
-     services, but risks potentially imbalanced traffic spreading. "Cluster"
-     obscures the client source IP and may cause a second hop to another node,
-     but should have good overall load-spreading.
-````
-
-
-But from https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-policies
-> With this architecture, it’s important that any ingress traffic lands on nodes that are running the corresponding pods for that service, otherwise, the traffic would be dropped
-
-A solution could be to use load  balancer health check on the NodePort.  
-
-[When using ingress](#when-using-ingress), with `NodePort` in step 3, we have extra hop (`kube-proxy` + depending on `externalTrafficPolicy`). 
-
-See details here: https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-nodeport and impact on [NAT](#externaltrafficpolicy).
-
-
-### When using LoadBalancer k8s service type
-
-It is a superset of `NodePort`.
-Usually provisonned load balancer integrates the health check
-
-See https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-loadbalancer
-
-> setting the same service.spec.externalTrafficPolicy field to Local forces nodes without Service endpoints to remove themselves from the list of nodes eligible for loadbalanced traffic by deliberately failing health checks.
-
-### Particular case 
-
-[Ingress with NodePort (Load Balancer) service type](#when-using-ingress) is a particular case of [NodePort (LoadBalancer) service type](#when-using-nodeport-k8s-svc-type).  <!-- clear -->
-However Ingress controller being a `DaemonSet`, we always have a pod running on each node!
-It avoids issue with `ExternalTrafficPolicy` which can be local. (until the ingress controller)
- 
-I recommend to read: 
-- https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-policies
-- https://web.archive.org/web/20210205193446/https://www.asykim.com/blog/deep-dive-into-kubernetes-external-traffic-policies
-
-Note this is link to that article where we had seen cluster ip
-https://github.com/scoulomb/myDNS/blob/2b846f42f7443e84fc667ae3f3f66188f1c69259/2-advanced-bind/1-bind-in-docker-and-kubernetes/2-understand-source-ip-in-k8s.md
-and it references this doc
-https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-clusterip
-When they talk on source ip preservation on node port and lb service depending on external traffic policy.
-Note as mention externalTrafficPolicy does not apply to clusterIP (internal OK).
-
-Next: [F5 integration](./k8s_f5_integration.md) where F5 ingress in cluster mode watches directly pods and bind port 80/443 which enables to have a single level of indirection as suggested in SO answer. 
-
-### Note on `externalTrafficPolicy`
-
-#### `externalTrafficPolicy`
-
-From doc: https://kubernetes.io/docs/tutorials/services/source-ip/: external traffic policy has an impact on source ip.
-
-- [load balance manually on NodePort](#when-using-nodeport-k8s-svc-type): https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-nodeport
-
-- via [k8s load balancer service type (which is based on NodePort)](#when-using-loadbalancer-k8s-service-type): https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-loadbalancer
-
-We had mentioned that load balancer could check health. They this is what [GKE is doing](https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-loadbalancer).
-
-
-#### Cloud edge/and POP
-
-We can have a F5 in front Azure load balancer, and with TM DNS reslution to Azure LB.
-So to complement with full picture 
-- [above when-using-nodeport-k8s-svc-type](#when-using-nodeport-k8s-svc-type)
-We have: `F5 Port -> AZ LB Port -> NodePort in control plane-kubeproxy (-> endpoint ip/port=container port in control plane) -> Container target Port`. (when NodePort, svc type can be lb)
-
-We have alternative to use [hostPort](#host-port), which is `bind` equivalent.
-
-- [above when-using-ingress](#when-using-ingress)
-We have: `F5 Port -> AZ LB Port -> NodePort-kubeproxy xor bindport -> HA proxy targetport -> Ingress deifnition in control plane -> service port (kube proxy) (-> endpoint ip/port=container port in control plane) -> Container target Port`. (when NodePort, svc type can be lb)
-
-
-For bind port refer to [hostPort](#host-port), Note in doc they define a service but seems more documentation: https://github.com/scoulomb/traefik/blob/v1.7/docs/user-guide/kubernetes.md 
-
-And we can have DNS between F5 to AZ LB for traffic swithc.
-
-**See strong link with private script: private_script/blob/main/Links-mig-auto-cloud/listing-use-cases/listing-use-cases-appendix.md#pre-req**
-<!-- dns resolv Fix OK stop here -->
-
-#### Mirror
-
-To observe this they use a mirror server.
-We had made one here: https://github.com/scoulomb/http-over-socket
-
-<!--
-here also MAES orchestrator has one Mirror.java
-and referenced in https://github.com/scoulomb/private_script/blob/main/sei-auto/certificate/certificate.md is OK, no impact
-already seen this https://kubernetes.io/docs/tutorials/services/source-ip osef
--->
-
-See also: https://matthewpalmer.net/kubernetes-app-developer/articles/kubernetes-networking-guide-beginners.html
-<!-- mirrored https://github.com/scoulomb/private_script/blob/main/sei-auto/certificate/certificate-doc/k8s-networking-guide/network-guide.md -->
-
-#### NAT 
-
-In K8s doc when not using `externalTrafficPolicy` with `NodePort` and `LoadBalancer` service type,
-they mention we are doing:
-- `SNAT` (replaces the source IP address (SNAT) in the packet with its own IP address)
-- + `DNAT` (replaces the destination IP on the packet with the pod IP)
-https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-nodeport
-
-What does it mean?
-
-From: https://superuser.com/questions/1410865/what-is-the-difference-between-nat-and-snat-dnat/1410870
-
-> "NAT" is a collective term for various translations - usually it's actually NAPT (involving the transport-layer port numbers as well).
-
-> Source NAT translates the source IP address,
-> usually when connecting from a private IP address to a public one ("LAN to Internet").
-
-What happens when we use Internet
-
-> Destination NAT translates the destination IP address,
-> usually when connecting from a public IP to a private IP (aka port-forwarding, reverse NAT, expose host, "public server in LAN").
-
-What happens when we configure NAT on the box
-
-See here SNAT@home/DNAT@home: https://github.com/scoulomb/docker-under-the-hood/tree/main/NAT-deep-dive-appendix#cisco-nat-classification
-
-Reverse NAT is similar to this:
-https://github.com/scoulomb/myDNS/blob/master/2-advanced-bind/5-real-own-dns-application/6-use-linux-nameserver-part-f.md#analysis
-So in this case [if using ingress with NodePort in step 3](#when-using-ingress) we would apply NAT at box and inside the cluster.
-
-Here we details internal behavior: https://kubernetes.io/docs/tutorials/services/source-ip/#source-ip-for-services-with-type-nodeport
-
-The SNAT is NO SRC
-Similar to F5 to Node described here: https://github.com/scoulomb/docker-under-the-hood/tree/main/NAT-deep-dive-appendix#section-about-securenats
-> This is not same SNAT as @home.. It is SNAT between F5 and application (gateway).
-
-And DNAT same as @home.
-
-
-<!-- only this CASE imo, ingress where bind controller on privileged port has no NAT inside cluster -->
-
-<!-- more links in seed which is in comment of component mapping here
-https://github.com/scoulomb/private_script/blob/main/sei-auto/certificate/certificate.md#components-mapping
-where we can see this detail the detail OK of "OpenShift+route+deep+dive"
-
-Note here we have
-https://github.com/scoulomb/private_script/blob/main/sei-auto/certificate/certificate-doc/k8s-networking-guide/network-guide.md#communication-between-pods-and-services
-this is done via NAT (OK STOP)
---> 
-
-<!--
-Note port=targetPort by default at svc level
-https://github.com/scoulomb/myk8s/blob/master/Deployment/advanced/container-port.md#create-pod-with-service-and-container-port
-when port!=targetPort it is like DNAT with port -> DNAPT
-Note here is the route: https://github.com/scoulomb/private_script/ -> modified_manifest.yaml#L136, targeting port to svc
-similar to NAT on the box
--->
-
+-----
 # Other ways to access a service
 
 Note in previous experience we were using a real Kubernetes distribution with Nginx ingress.
@@ -1577,8 +1465,6 @@ http://192.168.1.1/state/wan
 -->
 
 ## hostNetwork: true
-
-
 
 ### Try to deploy a pod with hostNetwork
 
@@ -1730,11 +1616,17 @@ sudo minikube addons enable ingress
 
 ## Host port
 
+Flow is 
+
+````
+Worker Node [1 WorkerNode IP, hostPort] -> DNAT rules generated (ipTable update by portMap CNI plugin) to (podId, podTemplate.spec.ports.containerPort)
+-> [podIp, podTemplate.spec.ports.containerPort] distributing to the Ingress POD of the reached node 
+````
+
 See https://lambda.mu/hostports_and_hostnetwork/
 
 
-This is what is actually used by ingress in ["When using ingress"](#when-using-ingress) where we use:
-> Alternative (2+3)
+This is what is actually used by [ingress when it is binded to the node](#option-b-bind-a-port-in-node)
 
 where we 
 
@@ -2095,12 +1987,8 @@ here: https://github.com/scoulomb/myk8s/blob/master/Deployment/advanced/containe
 could force the port and typo //, stop here -->
 
 
-## Note on Ingress
 
-Ingress controller use hostPort, as seen in "Alternative (2+3)." in section ["when using ingress"](#when-using-ingress)
-
-
----
+-----
 # Other examples
 
 ## In my DNS
@@ -2141,7 +2029,66 @@ where it is at ingress, pod level but could be at lb -->
 
 See [Appendix on internals](appendix_internals.md).
 
+---
+# Summary
 
-<!--
-[](#cloud-edgeand-pop) -> concluded and hostport update OK
-This is ccl OK and consistent other doc, as hoostport is different OK -->
+To access to an OpenShift cluster we can use
+
+- [hostPort](#host-port)
+
+  `````text
+  Worker Node [1 WorkerNode IP, hostPort] -> DNAT rules generated (ipTable update by portMap CNI plugin) to (podId, podTemplate.spec.ports.containerPort)
+  -> [podIp, podTemplate.spec.ports.containerPort] distributing to the Ingress POD of the reached node 
+  `````
+
+- [NodePort service](#nodeport--clusterip--high-routed-port)
+  
+  ````
+  External Traffic -> Worker Node [1 WorkerNode IP, spec.ports.NodePort] -> DNAT rules generated from Kube-Proxy using (svc.ports.NodePort) to (podId, spec.ports.TargetPort) ->[podIp, spec.ports.TargetPort] distributing to set of PODs  
+  ````
+
+- [LoadBalancer service](#loadbalancer--nodeport--lb) (where LB svc type super set nodePort)
+  
+  ````
+  External Traffic -> Provisioned Azure Load Balancer  [External LB IP, spec.ports.port] ->  Worker Node [1 WorkerNode IP, spec.ports.NodePort] -> DNAT rules generated from Kube-Proxy using (svc.ports.NodePort) to (podId, spec.ports.TargetPort) -> [podIp, spec.ports.TargetPort] distributing to set of PODs  
+  ````
+  
+  Alternative is to use a NodePort and do own load balancing manually, it is equivalent to load balancer type, except that LB will not be automatically provisioned.
+
+
+
+- [Ingress](#implementation-details)
+  - Northbound
+    - Option A: which uses NodePort/LoadBalancer service type (see bullet above)
+
+          ````
+          Northbound:
+          External Traffic ->  Provisioned (Azure) Load Balancer  [External LB IP, spec.ports.port] (svc type is LB) XOR LB not operated by k8s XOR NO LB
+          ->  Worker Node [1 WorkerNode IP, spec.ports.NodePort] -> DNAT rules generated from Kube-Proxy using (svc.ports.NodePort) to (podId, spec.ports.TargetPort)
+          -> [podIp, spec.ports.TargetPort] distributing to set of Ingress PODs 
+          ````
+
+    - Option B: which uses hostPort (see bullet above)
+
+          ````
+          External Traffic ->  Provisioned (Azure) Load Balancer  [External LB IP, spec.ports.port] (svc type is LB) XOR LB not operated by k8s XOR NO LB
+          ->  Worker Node [1 WorkerNode IP, hostPort] -> DNAT rules generated (ipTable update by portMap CNI plugin) to (podId, podTemplate.spec.ports.containerPort)
+          -> [podIp, podTemplate.spec.ports.containerPort] distributing to the Ingress POD of the reached node 
+          ````
+  - Southbound
+        
+      ````text
+      Southbound: -> Ingress pod is applying rules defined in Ingress resource. It select a k8s service. We call it selectedSvc in this doc (**) -> [podIp, selectedSvc.ports.TargetPort] distributing to set of PODs IP (matching svc label)
+      ````
+
+
+If we have a cloud edge/POP, here we talk only about shard/app instance part <!-- legacy DC, Azure -->.
+We could have another F5 in cloud edge in front of LB.
+
+This cloud edge LB could target right shard (via TM when Azure).
+<!-- when legacy possibly not on openshift yet -->
+
+**See strong link with private script listing-use-cases/listing-use-cases-appendix-1- (schema with port) and appendix-2**
+
+
+<!-- OK FULL DOC CLEAN AND CCL OK CCL 3sep24 -->

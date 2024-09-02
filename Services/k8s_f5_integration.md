@@ -1,5 +1,7 @@
 # F5 integration 
 
+DEPRECATED: see [service deep dive](./service_deep_dive.md#openshift-route-ha-proxy)
+
 Disclaimer: this is my current understanding, browsing the doc
 
 In this page we will describe F5 integration with K8s.
