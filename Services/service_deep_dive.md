@@ -918,7 +918,7 @@ Internal Traffic - - -> DNS resolution `<service-name>.svc` to CNAME
 
 NB: [Headless services](#headless-service) and [service without selector](#service-without-a-selector) can be combined together, and also with the service type.
 
-Each service has related internal DNS record in `<service-name>.svc` to `clusterIP`
+Each service has related internal DNS record in `<service-name>.svc` to `clusterIP`. [Refer to](#svc-discovery-by-environment-variable-or-dns-within-a-pod)
 
 Looking at: https://learn.microsoft.com/en-us/azure/aks/concepts-network-services, we understand well and see simplification made! (forked here: https://github.com/scoulomb/azure-aks-docs/blob/main/articles/aks/concepts-network-services.md)
 
@@ -1616,6 +1616,9 @@ k delete deploy deploy1-normal
 sudo minikube addons enable ingress
 ````
 
+Looking at: https://learn.microsoft.com/en-us/azure/aks/concepts-network-ingress#ingress-controllers, we understand well and see simplification made! (forked here: https://github.com/scoulomb/azure-aks-docs/blob/main/articles/aks/concepts-network-ingress.md)
+
+
 ## Host port
 
 Flow is 
@@ -2034,7 +2037,9 @@ See [Appendix on internals](appendix_internals.md).
 ---
 # Summary
 
-To access to an OpenShift cluster we can use
+To access to an OpenShift cluster (externally) we can use
+
+- [clusterIP](#clusterip): internal only
 
 - [hostPort](#host-port)
 
@@ -2064,7 +2069,6 @@ To access to an OpenShift cluster we can use
     - [Option A](#option-a-use-nodeport-): which uses NodePort/LoadBalancer service type (see bullet above)
 
           ````
-          Northbound:
           External Traffic ->  Provisioned (Azure) Load Balancer  [External LB IP, spec.ports.port] (svc type is LB) XOR LB not operated by k8s XOR NO LB
           ->  Worker Node [1 WorkerNode IP, spec.ports.NodePort] -> DNAT rules generated from Kube-Proxy using (svc.ports.NodePort) to (podId, spec.ports.TargetPort)
           -> [podIp, spec.ports.TargetPort] distributing to set of Ingress PODs 
@@ -2092,5 +2096,10 @@ This cloud edge LB could target right shard (via TM when Azure).
 
 **See strong link with private script listing-use-cases/listing-use-cases-appendix-1- (schema with port) and appendix-2**
 
+
+We also understand simplification made here
+- https://github.com/scoulomb/azure-aks-docs/blob/main/articles/aks/concepts-network-services.md
+- https://github.com/scoulomb/azure-aks-docs/blob/main/articles/aks/concepts-network-ingress.md
+<!-- ok suffit yes, and quick check consistent stop -->
 
 <!-- OK FULL DOC CLEAN AND CCL OK CCL 3sep24 -->
