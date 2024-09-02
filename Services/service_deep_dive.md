@@ -157,7 +157,7 @@ In summary here is how `kube-proxy` works
 - Service is `SVC01` created with a `cluster IP`. Service has a label selector `app: X` 
 - New pods are created with a label `app: X`. Those pods have a pod IP. Assume `pod_1 ip_1`. `pod_2 ip_2` 
 - API server triggers creation of an endpoint with pod's label `app: X`. Assume `EP01`, `EP02` respectively to `pod_1 ip_1`. `pod_2 ip_2`
-- API server will check POD to be associated to service `svc01`. It will look for endpoints (pods) matching the label selector `app: X`.
+- API server will check POD to be associated to service `svc01`. It will look for endpoints (pods) matching the service label selector `app: X`.
 Here `EP01`, `EP02`
 - API server will map the `SVC01` / `cluster IP` to `EP01`, `EP02`
 - We want this mapping to be implemented on the network so that traffic coming to the IP of `SVC01` can be forwarded to `EP01` or `EP02`.
@@ -766,7 +766,7 @@ POD can be in same worker node or not. Same apply for other service type after D
 
 
 ````
-Internal Traffic -> Worker Node [1 WorkerNode IP, spec.ports.NodePort] -> DNAT rules generated from Kube-Proxy using (svc.ports.NodePort) to (podId, spec.ports.TargetPort) ->[podIp, spec.ports.TargetPort] distributing to set of PODs  
+External Traffic -> Worker Node [1 WorkerNode IP, spec.ports.NodePort] -> DNAT rules generated from Kube-Proxy using (svc.ports.NodePort) to (podId, spec.ports.TargetPort) ->[podIp, spec.ports.TargetPort] distributing to set of PODs  
 ````
 
 As explained in [`NodePort`](#NodePort), we have  `svc.spec.clusterIP` in the chain but linking is done via `svc.ports.NodePort`
@@ -785,6 +785,7 @@ External Traffic -> Provisioned Azure Load Balancer  [External LB IP, spec.ports
 As explained in [`NodePort`](#NodePort), we have  `svc.spec.clusterIP` in the chain but linking is done via `svc.ports.NodePort`
 
 We give example of AZ LB but each cloud provider has its implem.
+We can use a NodePort and do own load balancing manually, it is equivalent to load balancer type, except that LB not automatically provisioned.
 
 External LB IP can be provided: https://learn.microsoft.com/en-us/azure/aks/load-balancer-standard#restrict-inbound-traffic-to-specific-ip-ranges and `service.beta.kubernetes.io/azure-load-balancer-ipv4`.
 
@@ -1165,7 +1166,9 @@ deploy2-5ff54b6b7b-z7fgp   1/1     Running   0          77m   192.168.16.189   k
 
 ### Traefik to POD
 
-**The route/ingress does not actually target the service and then the pod.**
+This is the southbound part
+
+**The route/ingress does not actually target the service IP and then the pod via DNAT rule created via `kube-proxy`.** as seen in [Cluster IP section](#service-internal).
 
 From the doc Traefik controller is watching endpoints and ingress resources
 As seen here: https://docs.traefik.io/v1.7/user-guide/kubernetes/
@@ -1177,14 +1180,34 @@ Note endpoint exists because of service (endpoints controller)
 Similarly Nginx ingress controller is also watching endpoint. From this [article](https://itnext.io/managing-ingress-controllers-on-kubernetes-part-2-36a64439e70a
 > the k8s-ingress-nginx controller uses the service endpoints instead of its virtual IP address.
 
-Thus `kube-proxy` is not used.
+Thus `kube-proxy` is not used between ingress and pods.
 
 **It explain why a single TCP connection is opened between ingress and PODs.**
 
+Evidence, code snippets and rational is given in this github issue: https://github.com/traefik/traefik/issues/5322
 
 <!-- so not a question of network layer -->
 
-### Ingress itself is a using standard k8s service but it can also bind port on node 
+So it works as follows
+
+````text
+Southbound: -> Ingress pod is applying rules defined in Ingress resource. It select a k8s service. We call it selectedSvc in this doc (**) -> [podIp, selectedSvc.ports.TargetPort] distributing to set of PODs IP (matching svc label)
+````
+
+(**) How did Ingress operator identify podIP without `kube-poxy`. It is actually performing a similar work to [`kube-proxy`](#service-internal)
+
+- Service is `SVC01` created with a `cluster IP`. Service has a label selector `app: X`
+- New pods are created with a label `app: X`. Those pods have a pod IP. Assume `pod_1 ip_1` . `pod_2 ip_2`
+- API server triggers creation of an endpoint with pod's label  `app: X`. Assume `EP01`, `EP02` respectively to `pod_1 ip_1`. `pod_2 ip_2`
+- Ingress operator will checks it rules definition
+- Assume a rule has to be associated to `svc01`. Operator will look for endpoints (pods) matching the service label selector `app: X`. Here `EP01`, `EP02`
+- Operator will map the rule linked to `SVC01` to `EP01`, `EP02`.
+- It will use the target port in the svc definition
+
+
+### Client to Ingress itself is a using standard k8s service but it can also bind port on node 
+
+This is the northbound part.
 
 Ingress itself can also use the `kube-proxy` or not: as explained in [traefik doc](https://doc.traefik.io/traefik/v1.7/user-guide/kubernetes/) or in source [here](https://github.com/scoulomb/traefik/blob/v1.7/docs/user-guide/kubernetes.md).
 > DaemonSets can be run with the NET_BIND_SERVICE capability, which will allow it to bind to port 80/443/etc on each host. This will allow bypassing the kube-proxy, and reduce traffic hops. Note that this is against the Kubernetes [Best Practices Guidelines](https://kubernetes.io/docs/concepts/configuration/overview/#services), and raises the potential for scheduling/scaling issues. Despite potential issues, this remains the choice for most ingress controllers.
@@ -1193,15 +1216,30 @@ With the 2 deployment modes described in the doc:
 
 #### Option A: use `NodePort` 
 
-(or `LoadBalancer` service type which is a super set)
+(or `LoadBalancer` service type which is a super set). We can also use `NodePort` with a custom load balancer, not operated via k8s, like an F5 device.
 
-> The Service will expose two NodePorts which allow access to the ingress and the web interface. 
+> The Service will expose two NodePorts which allow access to the ingress and the web interface.  
 
-=> `kube-proxy` is used.
-
+=> `kube-proxy` is used between client and ingress PODs, as depicted in [summary](#to-sum-up) (northbound). 
+=> `kube-proxy` is not used between ingress and pods (southbound).
 
 **We use a `Deployment` + a service [`NodePort`](#nodeport) with 2 ports for the ingress: https://doc.traefik.io/traefik/v1.7/user-guide/kubernetes/#deploy-traefik-using-a-deployment-or-daemonset**
 
+It works as follows:
+
+````
+Northbound:
+External Traffic ->  Provisioned (Azure) Load Balancer  [External LB IP, spec.ports.port] (svc type is LB) XOR LB not operated by k8s XOR NO LB
+->  Worker Node [1 WorkerNode IP, spec.ports.NodePort] -> DNAT rules generated from Kube-Proxy using (svc.ports.NodePort) to (podId, spec.ports.TargetPort)
+-> [podIp, spec.ports.TargetPort] distributing to set of Ingress PODs 
+````
+
+Note: if we deploy Ingress as DaemonSet we can use local [external traffic policy](#external-traffic-policy)
+
+
+**When using option A, it is well visible that Ingress is a particular case of [`NodePort`](#nodeport) or [`Loadbalancer`](#loadbalancer) service type**
+
+Where ClusterIP < NodePort < LoadBalancer.
 
 #### Option B: bind a port in Node
 
@@ -1211,7 +1249,7 @@ With the 2 deployment modes described in the doc:
 - > This will create a Daemonset that uses privileged ports 80/8080 on the host. This may not work on all providers, but illustrates the static (non-NodePort) hostPort binding.
   > The traefik-ingress-service can still be used inside the cluster to access the DaemonSet pods. 
 
-=> `kube-proxy` is NOT used.
+=> `kube-proxy` is NOT used at all for both northbound and southbound part.
 
 
 We need a `DaemonSet` to have the ingress on each node (as we do not use `Service` here even if created in doc example: https://doc.traefik.io/traefik/v1.7/user-guide/kubernetes/#deploy-traefik-using-a-deployment-or-daemonset but quoting it
@@ -1225,6 +1263,31 @@ cf. [StackOverflow response](https://stackoverflow.com/questions/60031377/load-b
 See complementary articles:
 - https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/
 - https://www.haproxy.com/fr/blog/dissecting-the-haproxy-kubernetes-ingress-controller/
+
+See [host port](#host-port)
+
+It works as follows 
+
+
+````
+Northbound:
+External Traffic ->  Provisioned (Azure) Load Balancer  [External LB IP, spec.ports.port] (svc type is LB) XOR LB not operated by k8s XOR NO LB
+->  Worker Node [1 WorkerNode IP, hostPort] -> DNAT rules generated (ipTable update by portMap CNI plugin) to (podId, podTemplate.spec.ports.containerPort)
+-> [podIp, podTemplate.spec.ports.containerPor] distributing to the Ingress POD of the reached node 
+````
+
+Note the usage of container port in podTemplate and not of service, which here is not for documentation, 
+More details on hostPort here: https://lambda.mu/hostports_and_hostnetwork/
+
+#### Wrap together 
+
+[Northbound with (option A or B)](#client-to-ingress-itself-is-a-using-standard-k8s-service-but-it-can-also-bind-port-on-node-) + [southbound](#traefik-to-pod)
+
+#### SPOF: Single Point Of Failure 
+========================================================
+[WE ARE HERE EVERYTHING ABOVE IS SUPER CLEAR]
+========================================================
+
 
 ### OpenShift route (HA proxy)
 
@@ -1666,6 +1729,9 @@ sudo minikube addons enable ingress
 ````
 
 ## Host port
+
+See https://lambda.mu/hostports_and_hostnetwork/
+
 
 This is what is actually used by ingress in ["When using ingress"](#when-using-ingress) where we use:
 > Alternative (2+3)
