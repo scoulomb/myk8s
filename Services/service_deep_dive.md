@@ -1349,8 +1349,10 @@ External Traffic ->  Provisioned (Azure) Load Balancer  [External LB IP, spec.po
 -> [podIp, spec.ports.TargetPort] distributing to set of Ingress PODs 
 ````
 
-Note: if we deploy Ingress as DaemonSet we can use local [external traffic policy](#note-on-external-traffic-policy)
-since we always have a pod running on each node!
+Note: Node on which we are distributed can contain ingress pod or not, if not: request sent to other node, and same for pod after selected svc. 
+
+Note: if we deploy Ingress as DaemonSet we can use local [external traffic policy](#note-on-external-traffic-policy) for Ingress NodePort (LoadBalancer) service
+since we always have a Ingress pod running on each node!
 
 **When using option A, it is well visible that Ingress is a particular case of [`NodePort`](#nodeport) or [`Loadbalancer`](#loadbalancer) service type**
 
@@ -2077,6 +2079,7 @@ See note on [external traffic policy](#note-on-external-traffic-policy)
           ->  Worker Node [1 WorkerNode IP, spec.ports.NodePort] -> DNAT rules generated from Kube-Proxy using (svc.ports.NodePort) to (podId, spec.ports.TargetPort)
           -> [podIp, spec.ports.TargetPort] distributing to set of Ingress PODs 
           ````
+  
 
     - [Option B](#option-b-bind-a-port-in-node): which uses hostPort (see bullet above)
 
@@ -2123,10 +2126,11 @@ Assume we have Ingress with Option A, with LoadBalancer service provisioning an 
 This will give us an IP address.
 
 Usually a wildcard DNS record is defined to this Azure Load Balancer IP:  `*.mypass.toto.net`
-A default paas openshift route is created, and it matches `something.mypass.toto.net`, so that it is distributed to HA proxy, and HA proxy can select the correct service.
+A default paas openshift route (OpenShift router is an implem of HA proxy) is created, and it matches `something.mypass.toto.net`. Client targeting DNS will be distributed to HA proxy PODs (with option A [`NodePort`](#nodeport--clusterip--high-routed-port), HA proxy pod can be in different node as the one receiving request), and HA proxy can select the correct service based on the rule (and here pod can be again in different node).
+<!-- in some implem route name may be auto filled with service name + wildcard -->
 
 We could block direct access to the route, from a given network zone (for example office to prod)
-Thus we would have to go through a reverse proxy / Azure API gateway ....
+Thus we would have to go through a reverse proxy / [Azure Application Gateway](https://learn.microsoft.com/en-us/azure/application-gateway/overview) (not apim or LB Layer 4) (doc describes it as something very similar to HA proxy) ....
 
 Reverse proxy example is HA proxy: https://github.com/scoulomb/myhaproxy/blob/main/README.md
 
@@ -2135,9 +2139,9 @@ In that case we will need to define an entry
 - Entry (backend) in reverse proxy (https://github.com/scoulomb/myhaproxy/blob/main/haproxy/haproxy.cfg) to Azure Load Balancer IP (we can use wildcard DNS)
 - OpenShift route matching DNS in front of HA proxy so that Ingress/OpenShift HA proxy can select correct service
 
-<!-- tm discussion - 3-9-24 - and consistent OK status.load.ingress.ip of Ingress svc matches az lb ip, this az lb IP is returned by nslookup of DNS `*.mypass.toto.net` (even if TNZ in name, just zone, not the DNS to proxy OK)  (IP returned is not the one of nodes) -->
+<!-- tm discussion - 3-9-24 - and consistent OK .status.loadbalancer.ingress.[].ip of Ingress svc matches az lb ip, this az lb IP is returned by nslookup of DNS `*.mypass.toto.net` (even if TNZ in name, just zone, not the DNS to proxy OK)  (IP returned is not the one of nodes) -->
 
-We would have following rational 
+We would have the following rational 
 - Access API inside cluster (like non reg) to target clusterIP (via [svc dns](#svc-discovery-by-environment-variable-or-dns-within-a-pod) directly of service which would have been selected by Ingress, We called it `selectedSvc` in Ingress/Southbound. 
 - Access API in same nw zone to use wildcard DNS of platform
 - User outside of cluster (in different network zone ) to use reverse proxy, gateway
