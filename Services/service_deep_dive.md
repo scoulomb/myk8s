@@ -2135,7 +2135,7 @@ In that case we will need to define an entry
 - Entry (backend) in reverse proxy (https://github.com/scoulomb/myhaproxy/blob/main/haproxy/haproxy.cfg) to Azure Load Balancer IP (we can use wildcard DNS)
 - OpenShift route matching DNS in front of HA proxy so that Ingress/OpenShift HA proxy can select correct service
 
-<!-- tm discussion - 3-9-24 - and consistent OK status.load.ingress.ip of Ingress svc matches az lb ip, this az lb IP is returned by nslookup of DNS `*.mypass.toto.net` (even if TNZ in name, no the DNS to proxy)  (IP returned is not the one of nodes) -->
+<!-- tm discussion - 3-9-24 - and consistent OK status.load.ingress.ip of Ingress svc matches az lb ip, this az lb IP is returned by nslookup of DNS `*.mypass.toto.net` (even if TNZ in name, just zone, not the DNS to proxy OK)  (IP returned is not the one of nodes) -->
 
 We would have following rational 
 - Access API inside cluster (like non reg) to target clusterIP (via [svc dns](#svc-discovery-by-environment-variable-or-dns-within-a-pod) directly of service which would have been selected by Ingress, We called it `selectedSvc` in Ingress/Southbound. 
@@ -2143,10 +2143,11 @@ We would have following rational
 - User outside of cluster (in different network zone ) to use reverse proxy, gateway
 
 In that case we would have this HA proxy + kube-proxy + platform HA proxy ;) 
+See comment at https://github.com/scoulomb/myhaproxy/blob/main/README.md#k8s-and-ha-proxy <!-- align OK https://github.com/scoulomb/myhaproxy/commit/37c17c877dcd012477a6066bc7a54aca58c2720e -->
 
 <!-- legacy paas similar -->
 
 <!-- OK FULL DOC CLEAN AND CCL OK CCL 3sep24 -->
-<!-- I can refully concluded OK -->
+<!-- I can refully concluded OK - YES CCL OK -->
 
 
