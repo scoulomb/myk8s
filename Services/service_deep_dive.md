@@ -902,6 +902,8 @@ Alternative is to use a NodePort and do own load balancing manually, it is equiv
 
 External LB IP can be provided: https://learn.microsoft.com/en-us/azure/aks/load-balancer-standard#restrict-inbound-traffic-to-specific-ip-ranges and `service.beta.kubernetes.io/azure-load-balancer-ipv4`.
 
+Provisioned means platform Provisioned
+
 See summary of port in load balancer section [here](#loadbalancer)
 
 #### External name 
@@ -2054,6 +2056,8 @@ To access to an OpenShift cluster (externally) we can use
   External Traffic -> Worker Node [1 WorkerNode IP, spec.ports.NodePort] -> DNAT rules generated from Kube-Proxy using (svc.ports.NodePort) to (podId, spec.ports.TargetPort) ->[podIp, spec.ports.TargetPort] distributing to set of PODs  
   ````
 
+See note on [external traffic policy](#note-on-external-traffic-policy) 
+
 - [LoadBalancer service](#loadbalancer--nodeport--lb) (where LB svc type super set nodePort)
   
   ````
@@ -2061,7 +2065,7 @@ To access to an OpenShift cluster (externally) we can use
   ````
   
   Alternative is to use a NodePort and do own load balancing manually, it is equivalent to load balancer type, except that LB will not be automatically provisioned.
-
+  Provisioned means platform Provisioned.
 
 
 - [Ingress](#implementation-details)
@@ -2087,8 +2091,20 @@ To access to an OpenShift cluster (externally) we can use
       Southbound: -> Ingress pod is applying rules defined in Ingress resource. It select a k8s service. We call it selectedSvc in this doc (**) -> [podIp, selectedSvc.ports.TargetPort] distributing to set of PODs IP (matching svc label)
       ````
 
+We also understand simplification made here
+- https://github.com/scoulomb/azure-aks-docs/blob/main/articles/aks/concepts-network-services.md
+- https://github.com/scoulomb/azure-aks-docs/blob/main/articles/aks/concepts-network-ingress.md
+<!-- ok suffit yes, and quick check consistent stop -->
 
-If we have a cloud edge/POP, here we talk only about shard/app instance part <!-- legacy DC, Azure -->.
+Note: we can have dedicated HA proxy node for an application
+
+See link with: private_script/ Links-mig-auto-cloud/listing-use-cases/listing-use-cases-appendix-0-deep-dive-on-sharding.md#ingress-and-nodeport
+
+# Facade in front of Azure LB
+
+## Cloud edge (https://www.akamai.com/fr/glossary/what-is-cloud-edge-computing)
+
+If we have a cloud edge/POP (customer traffic), here we talk only about shard/app instance part <!-- legacy DC, Azure -->.
 We could have another F5 in cloud edge in front of LB.
 
 This cloud edge LB could target right shard (via TM when Azure).
@@ -2096,10 +2112,41 @@ This cloud edge LB could target right shard (via TM when Azure).
 
 **See strong link with private script listing-use-cases/listing-use-cases-appendix-1- (schema with port) and appendix-2**
 
+Remind that Ingress can do routing based on host header which is usually the DNS in front of Azure load balancer
+<!-- Apigee technical DNS for instance -->
 
-We also understand simplification made here
-- https://github.com/scoulomb/azure-aks-docs/blob/main/articles/aks/concepts-network-services.md
-- https://github.com/scoulomb/azure-aks-docs/blob/main/articles/aks/concepts-network-ingress.md
-<!-- ok suffit yes, and quick check consistent stop -->
+<!-- see also https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Host -->
+
+## Internal traffic, ingress example
+
+Assume we have Ingress with Option A, with LoadBalancer service provisioning an Azure load balancer.
+This will give us an IP address.
+
+Usually a wildcard DNS record is defined to this Azure Load Balancer IP:  `*.mypass.toto.net`
+A default paas openshift route is created, and it matches `something.mypass.toto.net`, so that it is distributed to HA proxy, and HA proxy can select the correct service.
+
+We could block direct access to the route, from a given network zone (for example office to prod)
+Thus we would have to go through a reverse proxy / Azure API gateway ....
+
+Reverse proxy example is HA proxy: https://github.com/scoulomb/myhaproxy/blob/main/README.md
+
+In that case we will need to define an entry
+- DNS to HA proxy front-end 
+- Entry (backend) in reverse proxy (https://github.com/scoulomb/myhaproxy/blob/main/haproxy/haproxy.cfg) to Azure Load Balancer IP (we can use wildcard DNS)
+- OpenShift route matching DNS in front of HA proxy so that Ingress/OpenShift HA proxy can select correct service
+
+<!-- tm discussion - 3-9-24 - and consistent OK status.load.ingress.ip of Ingress svc matches az lb ip, this az lb IP is returned by nslookup of DNS `*.mypass.toto.net` (even if TNZ in name, no the DNS to proxy)  (IP returned is not the one of nodes) -->
+
+We would have following rational 
+- Access API inside cluster (like non reg) to target clusterIP (via [svc dns](#svc-discovery-by-environment-variable-or-dns-within-a-pod) directly of service which would have been selected by Ingress, We called it `selectedSvc` in Ingress/Southbound. 
+- Access API in same nw zone to use wildcard DNS of platform
+- User outside of cluster (in different network zone ) to use reverse proxy, gateway
+
+In that case we would have this HA proxy + kube-proxy + platform HA proxy ;) 
+
+<!-- legacy paas similar -->
 
 <!-- OK FULL DOC CLEAN AND CCL OK CCL 3sep24 -->
+<!-- I can refully concluded OK -->
+
+
