@@ -108,12 +108,17 @@ Let's deep dive on how `ClusterIP` service type is working.
 
 `kube-proxy` watches endpoints and services to updates iptable and thus redirect to correct pod.
 
-It has several [modes](https://kubernetes.io/docs/concepts/services-networking/service/#virtual-ips-and-service-proxies)
-- user space proxy
-- ip table proxy :update ip table based on service cluster ip (virtual server) and endpoints (pool members)
-- ipvs (netlinks)
+It has several [modes](https://kubernetes.io/docs/reference/networking/virtual-ips/#proxy-modes)
+- `userspace` proxy (it was a real proxy) [deprecated now]: https://kubernetes.io/blog/2022/11/18/upcoming-changes-in-kubernetes-1-26/#removal-of-kube-proxy-userspace-modes)
+- `iptable` : update ip table based on service cluster ip (virtual server) and endpoints (pool members)
+- `ipvs` (netlinks)
+- `nftables` [new]
+- and `kernelspace` [new]
 
-We use below ip table.
+Note all our examples are given with `iptables`
+<-- userspace mode: expect proxy to listen on svc (cluster IP, Port), (NodeIP, Port) : cf [](#notes-on-ports), forward traffic, mechanism described for iptable in this doc section. Note additional NAT chain and listen described [](#nodeport) -->
+
+kube-proxy is not used (cf. https://kubernetes.io/docs/reference/networking/virtual-ips) for [external name](#external-name)
 
 It is running inside a Pod
 
@@ -183,6 +188,8 @@ iptables -t nat -L   <KUBE-SEP-XXX> -> DNAT rule to POD IP and service target Po
 ````
 
 See [NodePort](#NodePort) chain extension.
+
+Note on ClusterIP allocation: https://kubernetes.io/docs/concepts/services-networking/cluster-ip-allocation/#how-service-clusterips-are-allocated
 
 
 ## Svc discovery by environment variable or DNS within a POD
@@ -434,6 +441,8 @@ There will be two pool members associated with the load balancer:
 These are the IP addresses of the nodes in the Kubernetes cluster.
 
 We could setup load balancer manually.
+
+### Notes on ports
 
 We have seen following port
 - [clusterIP](#service-internal)
@@ -906,7 +915,10 @@ Provisioned means platform Provisioned
 
 See summary of port in load balancer section [here](#loadbalancer)
 
-#### External name 
+#### External name
+
+Kube-proxy is not used (cf. https://kubernetes.io/docs/reference/networking/virtual-ips) for [external name](#external-name)
+
 
 No proxying, full GTM
 
@@ -2039,7 +2051,7 @@ where it is at ingress, pod level but could be at lb -->
 See [Appendix on internals](appendix_internals.md).
 
 ---
-# Summary
+# Global Summary
 
 To access to an OpenShift cluster (externally) we can use
 
@@ -2105,18 +2117,20 @@ See link with: private_script/ Links-mig-auto-cloud/listing-use-cases/listing-us
 
 # Facade in front of Azure LB
 
-## Cloud edge (https://www.akamai.com/fr/glossary/what-is-cloud-edge-computing)
+## [Point of Presence](https://en.wikipedia.org/wiki/Point_of_presence) / Cloud edge
 
-If we have a cloud edge/POP (customer traffic), here we talk only about shard/app instance part <!-- legacy DC, Azure -->.
-We could have another F5 in cloud edge in front of LB.
+If we have a [cloud Point Of Presence](https://en.wikipedia.org/wiki/Point_of_presence) (customer traffic), here we talk only about an app instance part <!-- shard --> <!-- located in: non cloud DC or cloud provider Azure, AWS, GCP... -->.
+We could have another F5 in POP cloud edge in front of LB in section above. <!--  LB is in | non cloud DC: F5, Azure: Azure LB -->.
 
-This cloud edge LB could target right shard (via TM when Azure).
-<!-- when legacy possibly not on openshift yet -->
+This cloud edge LB could target right instance (via TM when Azure)<!-- Search "granularity" / Links-mig-auto-cloud/listing-use-cases/listing-use-cases-appendix-0-deep-dive-on-sharding.md -->.
+<!-- Azure | ESB: case of NodePort, Apigee: case of Ingress (which can re-target "Azure" (this comment) via cloud edge or "Non cloud DC" (comment below) or cloud native app) . Both Azure ESB/Apigee LB is a provisioned Azure LB via LoadBalancer k8s service type-->
+
+<!-- non cloud DC | ESB: F5 to VM MUX (no openshift), Apigee: case of Ingress with NodePort service type and F5 LB, F5 LB not provisioned by k8s -->
+
+Remind that Ingress can do routing based on host header which is usually the DNS in front of (Azure) load balancer
+<!-- Azure | Apigee Azure technical DNS for instance -->
 
 **See strong link with private script listing-use-cases/listing-use-cases-appendix-1- (schema with port) and appendix-2**
-
-Remind that Ingress can do routing based on host header which is usually the DNS in front of Azure load balancer
-<!-- Apigee technical DNS for instance -->
 
 <!-- see also https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-Host -->
 
@@ -2130,7 +2144,7 @@ A default paas openshift route (OpenShift router is an implem of HA proxy) is cr
 <!-- in some implem route name may be auto filled with service name + wildcard -->
 
 We could block direct access to the route, from a given network zone (for example office to prod)
-Thus we would have to go through a reverse proxy / [Azure Application Gateway](https://learn.microsoft.com/en-us/azure/application-gateway/overview) (not apim or LB Layer 4) (doc describes it as something very similar to HA proxy) ....
+Thus we would have to go through a reverse proxy / [Azure Application Gateway](https://learn.microsoft.com/en-us/azure/application-gateway/overview) (not apim or LB Layer 4) (doc describes it as something very similar to HA proxy) / [AWS application load balancer](https://learn.microsoft.com/fr-fr/azure/architecture/aws-professional/networking)....
 
 Reverse proxy example is HA proxy: https://github.com/scoulomb/myhaproxy/blob/main/README.md
 
@@ -2149,9 +2163,37 @@ We would have the following rational
 In that case we would have this HA proxy + kube-proxy + platform HA proxy ;) 
 See comment at https://github.com/scoulomb/myhaproxy/blob/main/README.md#k8s-and-ha-proxy <!-- align OK https://github.com/scoulomb/myhaproxy/commit/37c17c877dcd012477a6066bc7a54aca58c2720e -->
 
-<!-- legacy paas similar -->
+<!-- non cloud DC paas similar, LB here is Azure LB in Azure, non cloud and different provider, other solution and not necessarily a F5 in non cloud: https://github.com/scoulomb/private_script/blob/7b55c023a0859413b6336edde3a686613b3549d8/Links-mig-auto-cloud/certificate-management-in-cloud.md -->
 
 <!-- OK FULL DOC CLEAN AND CCL OK CCL 3sep24 -->
 <!-- I can refully concluded OK - YES CCL OK -->
 
+--
+# Re-encryption when route is used
 
+- https://github.com/scoulomb/misc-notes/blob/master/tls/tls-certificate.md#complements -> https://docs.openshift.com/container-platform/4.7/networking/routes/secured-routes.html
+- We can have at Ingress / OpenShift route level re-encrypt, edge, and passthrough routes with custom certificates 
+- re-encrypt and edge can benefit from platform default certificate 
+- See example of re-encrypt: https://github.com/scoulomb/private_script/blob/7b55c023a0859413b6336edde3a686613b3549d8/Links-mig-auto-cloud/certificate-doc/SSL-certificate-as-a-service-on-Openshift-4.md?plain=1#L16
+  - We have certificate exposed by router (usually trusted by client)
+  - We re-encrypt with certificate (which is signed by a private CA, trusted by the the OpenShift router client). The certificate signed by private CA offloaded in POP (can be via a sidecar or not)
+
+- Other components in the chain ([Facade](#facade-in-front-of-azure-lb) and Apigee) which can perform cert management with: `edge`, `passthrough` and `re-encrypt` capabilities. 
+  - Does not offer
+    - Azure load balancer is L4 so it does not re-encrypt or offer TLS management: https://www.reddit.com/r/AZURE/comments/156t9q8/is_there_any_way_to_do_ssl_termination_for_azure/
+    <!-- non cloud DC F5 tls added in cloudfi, when IP move in cloud edge, re-encrypt done in cloud edge independent if target in legacy (here tls removed, passthrough) or azure -->
+  - Offers
+    - [Azure Application Gateway for facade internal traffic](#internal-traffic-ingress-example) used for [Internal traffic](#service-internal), 
+    - [F5 used in Facade edge](#point-of-presence--cloud-edge) : https://my.f5.com/manage/s/article/K65271370 - [local copy](./resources/Most%20Common%20SSL%20Methods%20for%20LTM%20SSL%20Offload,%20SSL%20Pass-Through%20and%20Full%20SSL%20Proxy.pdf)
+    - Apigee could use [Ingress](#global-summary) - kind of facade - [See Apigee comment in section](#facade-in-front-of-azure-lb) <!-- link with appendix-2 @listing-use-cases/listing-use-cases-appendix-1- and appendix-2, apigee => ESB -->
+
+<!--  note L4 azure LB vs L3 router: CLB vs ALB vs NLB | Choosing the right AWS Load Balancer: https://www.site24x7.com/learn/clb-vs-alb-vs-nlb.html
+@PrezNewGen: difference IP switch and network path
+-->
+
+--
+#  Tan 
+
+- p 762 (739): Server farms vs webproxies  
+  - Server farm: mention alternative to use round robin DNS instead of LB (apply to all above)
+- p 767 (743) CDN (relying on GEO DNS) <!-- GDA - stop there - appendix-1 in listing-use-cases private script -->

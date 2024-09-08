@@ -102,3 +102,12 @@ $ cat .git/config
         email = sylvaincoulombel@gmail.com
 
 ````
+
+
+## Commit in past 
+
+https://stackoverflow.com/questions/3895453/how-do-i-make-a-git-commit-in-the-past
+
+````shell
+git commit --date "10 day ago" -m "Your commit message"  # or copy past date format from git log
+````
