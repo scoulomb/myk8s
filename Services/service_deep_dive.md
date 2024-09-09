@@ -116,7 +116,7 @@ It has several [modes](https://kubernetes.io/docs/reference/networking/virtual-i
 - and `kernelspace` [new]
 
 Note all our examples are given with `iptables`
-<-- userspace mode: expect proxy to listen on svc (cluster IP, Port), (NodeIP, Port) : cf [](#notes-on-ports), forward traffic, mechanism described for iptable in this doc section. Note additional NAT chain and listen described [](#nodeport) -->
+<-- userspace mode: expect proxy to listen on svc (cluster IP, Port), (NodeIP, Port) : cf [](#notes-on-ports). Forward traffic, mechanism described for iptable in this doc section. For NodePort additional NAT chain and TCP listen described [](#nodeport) -->
 
 kube-proxy is not used (cf. https://kubernetes.io/docs/reference/networking/virtual-ips) for [external name](#external-name)
 
@@ -2112,6 +2112,15 @@ We also understand simplification made here
 <!-- ok suffit yes, and quick check consistent stop -->
 
 Note: we can have dedicated HA proxy node for an application
+
+We can have platform HA proxy node <!-- infra nodes --> or dedicated HA proxy node.
+
+So we can access cluster via 3 ways <!-- impact here: /private_script blob /Links-mig-auto-cloud/listing-use-cases/listing-use-cases-appendix-0-deep-dive-on-sharding.md#ingress-and-nodeport -->
+1. NodePort
+2. Ingress (option A or option B) 
+  - 2.1 Platform HA proxy nodes
+  - 2.2 Dedicated nodes
+
 
 See link with: private_script/ Links-mig-auto-cloud/listing-use-cases/listing-use-cases-appendix-0-deep-dive-on-sharding.md#ingress-and-nodeport
 
